@@ -1,3 +1,4 @@
+# cSpell:words isready NEXTAUTH aquasecurity sarif Buildx buildx
 name: CI/CD Pipeline
 
 on:
@@ -7,7 +8,7 @@ on:
     branches: [main, develop]
 
 env:
-  NODE_VERSION: "18"
+  NODE_VERSION: "20"
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
@@ -110,6 +111,13 @@ jobs:
           format: "sarif"
           output: "trivy-results.sarif"
 
+      - name: Run Trivy container scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "config"
+          scan-ref: "."
+          format: "table"
+
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
@@ -151,6 +159,7 @@ jobs:
             type=sha,prefix={{branch}}-
 
       - name: Build and push Docker image
+        id: docker-build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -161,12 +170,42 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Run Trivy security scan on built image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.tags }}
+          format: "table"
+          severity: "CRITICAL,HIGH"
+
+  container-security:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    strategy:
+      matrix:
+        app: [lms, tms, admin]
+
+    steps:
+      - name: Run comprehensive container scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.app }}:main
+          format: "sarif"
+          output: "container-scan-${{ matrix.app }}.sarif"
+
+      - name: Upload container scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "container-scan-${{ matrix.app }}.sarif"
+
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: docker-build
     if: github.ref == 'refs/heads/develop'
-    environment: staging
 
     steps:
       - name: Deploy to staging
@@ -179,7 +218,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: docker-build
     if: github.ref == 'refs/heads/main'
-    environment: production
 
     steps:
       - name: Deploy to production

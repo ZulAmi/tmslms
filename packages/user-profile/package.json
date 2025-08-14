@@ -70,7 +70,7 @@
   },
   "homepage": "https://github.com/your-org/tmslms/tree/main/packages/user-profile#readme",
   "engines": {
-    "node": ">=18.0.0",
+    "node": ">=20.0.0",
     "npm": ">=9.0.0"
   },
   "publishConfig": {

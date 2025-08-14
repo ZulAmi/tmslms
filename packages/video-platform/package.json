@@ -1,0 +1,42 @@
+{
+  "name": "@tmslms/video-platform",
+  "version": "1.0.0",
+  "description": "Advanced video learning platform with analytics and interactive features",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "jest"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "hls.js": "^1.4.12",
+    "dashjs": "^4.7.2",
+    "video.js": "^8.5.2",
+    "videojs-contrib-hls": "^5.15.0",
+    "video-react": "^0.16.0",
+    "@types/video.js": "^7.3.55",
+    "chart.js": "^4.4.0",
+    "react-chartjs-2": "^5.2.0",
+    "uuid": "^9.0.1",
+    "@types/uuid": "^9.0.7"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.2.2",
+    "tsup": "^7.2.0",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.8"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  }
+}

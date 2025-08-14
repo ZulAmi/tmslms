@@ -27,7 +27,7 @@ export interface IFormConfigurationService {
   // Dynamic Field Management
   getConditionalFields(baseFields: FormField[], userData: any): Promise<FormField[]>;
   evaluateFieldConditions(field: ConditionalField, userData: any): Promise<boolean>;
-  generateValidationRules(field: FormField, context: FormGenerationContext): Promise<ValidationRule[]>;
+  generateValidationRules(field: FormField, context?: FormGenerationContext): Promise<ValidationRule[]>;
   
   // Role-Based Configuration
   getFieldsForRole(role: string, organization: string): Promise<FormField[]>;
@@ -81,7 +81,7 @@ export class FormConfigurationService implements IFormConfigurationService {
       // Generate form configuration
       const formConfig: ProfileFormConfig = {
         formId: this.generateFormId(),
-        version: '1.0',
+  version: '1.0.0',
         name: this.generateFormTitle(userContext, context),
         description: this.generateFormDescription(userContext, context),
         applicableRoles: [userContext.role],
@@ -140,7 +140,7 @@ export class FormConfigurationService implements IFormConfigurationService {
       
       return formConfig;
     } catch (error) {
-      console.error('Error generating profile form:', error);
+  this.logError('Error generating profile form:', error);
       throw new Error('Failed to generate profile form');
     }
   }
@@ -184,23 +184,24 @@ export class FormConfigurationService implements IFormConfigurationService {
 
   async evaluateFieldConditions(field: ConditionalField, userData: any): Promise<boolean> {
     if (!field.showWhen) return true;
-    
+
+    const logic = (field as any).logic || 'AND';
     for (const condition of field.showWhen) {
       const fieldValue = this.getNestedValue(userData, condition.field);
       const conditionMet = this.evaluateCondition(fieldValue, condition.operator, condition.value);
       
-      if (field.logic === 'AND' && !conditionMet) {
+      if (logic === 'AND' && !conditionMet) {
         return false;
       }
-      if (field.logic === 'OR' && conditionMet) {
+      if (logic === 'OR' && conditionMet) {
         return true;
       }
     }
     
-    return field.logic === 'AND';
+    return logic === 'AND';
   }
 
-  async generateValidationRules(field: FormField, _context: FormGenerationContext): Promise<ValidationRule[]> {
+  async generateValidationRules(field: FormField, context?: FormGenerationContext): Promise<ValidationRule[]> {
     const rules: ValidationRule[] = [];
     
     // Basic validation using existing ValidationRule structure
@@ -223,13 +224,22 @@ export class FormConfigurationService implements IFormConfigurationService {
         break;
         
       case 'phone':
-        rules.push({
-          type: 'pattern',
-          rule: '^\\+?[1-9]\\d{1,14}$',
-          errorMessage: 'Please enter a valid phone number'
-        });
+        // E.164 default, or use a provided custom format
+        if (context?.phoneFormat) {
+          rules.push({
+            type: 'pattern',
+            rule: context.phoneFormat,
+            errorMessage: 'Please enter a phone number in the required format'
+          });
+        } else {
+          rules.push({
+            type: 'pattern',
+            rule: '^\\+?[1-9]\\d{1,14}$',
+            errorMessage: 'Please enter a valid phone number'
+          });
+        }
         break;
-        
+
       case 'number':
         if (field.constraints?.min !== undefined) {
           rules.push({
@@ -243,6 +253,41 @@ export class FormConfigurationService implements IFormConfigurationService {
             type: 'range',
             rule: `max:${field.constraints.max}`,
             errorMessage: `Value must be at most ${field.constraints.max}`
+          });
+        }
+        break;
+
+      case 'text':
+      case 'textarea':
+        if ((field as any).constraints?.minLength !== undefined) {
+          rules.push({
+            type: 'range',
+            rule: `minLength:${(field as any).constraints.minLength}`,
+            errorMessage: `Must be at least ${(field as any).constraints.minLength} characters`
+          });
+        }
+        if ((field as any).constraints?.maxLength !== undefined) {
+          rules.push({
+            type: 'range',
+            rule: `maxLength:${(field as any).constraints.maxLength}`,
+            errorMessage: `Must be at most ${(field as any).constraints.maxLength} characters`
+          });
+        }
+        break;
+
+      case 'date':
+        if ((field as any).constraints?.minDate) {
+          rules.push({
+            type: 'range',
+            rule: `minDate:${(field as any).constraints.minDate}`,
+            errorMessage: `Date must be on or after ${(field as any).constraints.minDate}`
+          });
+        }
+        if ((field as any).constraints?.maxDate) {
+          rules.push({
+            type: 'range',
+            rule: `maxDate:${(field as any).constraints.maxDate}`,
+            errorMessage: `Date must be on or before ${(field as any).constraints.maxDate}`
           });
         }
         break;
@@ -283,16 +328,26 @@ export class FormConfigurationService implements IFormConfigurationService {
     
     for (const field of fieldsToValidate) {
       const fieldValue = this.getNestedValue(data, field.id);
-      const validationRules = await this.generateValidationRules(field, {});
+      const validationRules = await this.generateValidationRules(field);
       
       for (const rule of validationRules) {
-        const isValid = await this.validationEngine.validateField(fieldValue, rule);
-        if (!isValid) {
-          errors.push({
+        try {
+          const isValid = await this.validationEngine.validateField(fieldValue, rule);
+          if (!isValid) {
+            errors.push({
+              field: field.id,
+              rule: rule.type,
+              message: rule.errorMessage,
+              value: fieldValue
+            });
+          }
+        } catch (e) {
+          // Validator failure should not crash the flow; log and warn
+          this.logError(`Validator error on field ${field.id} (${rule.type})`, e);
+          warnings.push({
             field: field.id,
-            rule: rule.type,
-            message: rule.errorMessage,
-            value: fieldValue
+            message: 'Validation engine error; rule skipped',
+            suggestion: 'Please review validation configuration for this field'
           });
         }
       }
@@ -329,7 +384,7 @@ export class FormConfigurationService implements IFormConfigurationService {
         warnings: validationResult.warnings
       };
     } catch (error) {
-      console.error('Error processing form submission:', error);
+  this.logError('Error processing form submission:', error);
       return {
         success: false,
         errors: [{ field: 'form', rule: 'processing', message: 'Failed to process form submission', value: null }]
@@ -425,9 +480,9 @@ export class FormConfigurationService implements IFormConfigurationService {
   }
 
   private incrementVersion(version: string): string {
-    const parts = version.split('.');
-    const patch = parseInt(parts[2] || '0') + 1;
-    return `${parts[0]}.${parts[1]}.${patch}`;
+    const [major = '1', minor = '0', patchStr = '0'] = (version || '').split('.');
+    const patchNum = Number.isFinite(Number(patchStr)) ? parseInt(patchStr, 10) + 1 : 1;
+    return `${major}.${minor}.${patchNum}`;
   }
 
   private evaluateCondition(value: any, operator: string, targetValue: any): boolean {
@@ -452,7 +507,19 @@ export class FormConfigurationService implements IFormConfigurationService {
   }
 
   private getNestedValue(obj: any, path: string): any {
-    return path.split('.').reduce((current, key) => current?.[key], obj);
+    if (!obj || !path) return undefined;
+    // Support dot paths and bracket notation, e.g., addresses[0].city
+    const segments = path.split('.').flatMap(seg => {
+      const parts: string[] = [];
+      const regex = /([^\[\]]+)|(\[(\d+)\])/g;
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(seg)) !== null) {
+        if (match[1]) parts.push(match[1]);
+        else if (match[3]) parts.push(match[3]);
+      }
+      return parts.length ? parts : [seg];
+    });
+    return segments.reduce((current: any, key: string) => (current == null ? undefined : current[key]), obj);
   }
 
   private calculateCompleteness(fields: FormField[], data: any): number {
@@ -501,6 +568,16 @@ export class FormConfigurationService implements IFormConfigurationService {
   private async saveFormData(formConfig: ProfileFormConfig, data: any): Promise<any> {
     // This would save the form data to the database
     return { id: formConfig.formId, status: 'saved', data };
+  }
+
+  // ===========================================
+  // Logging helpers (centralized for production instrumentation)
+  // ===========================================
+  private logError(message: string, error?: unknown): void {
+    // Swap with a real logger (e.g., pino/winston) via DI as a future enhancement
+    // Keeping console for now to avoid breaking changes
+    // eslint-disable-next-line no-console
+    console.error(message, error);
   }
 }
 

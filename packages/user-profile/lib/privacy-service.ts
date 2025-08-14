@@ -15,8 +15,7 @@ import {
   DataProcessingActivity,
   PrivacyImpactAssessment,
   DataBreachIncident,
-  ConsentType,
-  DataCategory
+  ConsentType
 } from './types';
 
 // ===========================================
@@ -79,7 +78,6 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
   private dataClassifier: PersonalDataClassifier;
   private retentionManager: DataRetentionManager;
   private auditLogger: PrivacyAuditLogger;
-  private encryptionService: EncryptionService;
   private anonymizationService: AnonymizationService;
   private notificationService: NotificationService;
 
@@ -88,7 +86,6 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
     dataClassifier: PersonalDataClassifier,
     retentionManager: DataRetentionManager,
     auditLogger: PrivacyAuditLogger,
-    encryptionService: EncryptionService,
     anonymizationService: AnonymizationService,
     notificationService: NotificationService
   ) {
@@ -96,7 +93,6 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
     this.dataClassifier = dataClassifier;
     this.retentionManager = retentionManager;
     this.auditLogger = auditLogger;
-    this.encryptionService = encryptionService;
     this.anonymizationService = anonymizationService;
     this.notificationService = notificationService;
   }
@@ -199,12 +195,9 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
       await this.consentManager.withdrawConsent(latestConsent.id);
 
       // Log withdrawal
-      await this.auditLogger.logActivity({
-        userId,
-        action: 'consent_withdrawn',
-        details: { consentType, consentId: latestConsent.id },
-        timestamp: new Date()
-      });
+      await this.auditLogger.logActivity(
+        this.createAuditLogEntry(userId, 'consent_withdrawn', { consentType, consentId: latestConsent.id })
+      );
 
       // Apply withdrawal consequences
       await this.processConsentWithdrawal(userId, consentType);
@@ -237,12 +230,9 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
       await this.auditLogger.storeDataSubjectRequest(request);
 
       // Log the request
-      await this.auditLogger.logActivity({
-        userId: request.subjectId,
-        action: 'data_subject_request_submitted',
-        details: { requestType: request.requestType, requestId },
-        timestamp: new Date()
-      });
+      await this.auditLogger.logActivity(
+        this.createAuditLogEntry(request.subjectId, 'data_subject_request_submitted', { requestType: request.requestType, requestId })
+      );
 
       // Notify request processing team
       await this.notificationService.notifyDataSubjectRequest(request);
@@ -275,12 +265,9 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
       };
 
       // Log the data access
-      await this.auditLogger.logActivity({
-        userId,
-        action: 'data_access_processed',
-        details: { dataCategories: Object.keys(redactedData) },
-        timestamp: new Date()
-      });
+      await this.auditLogger.logActivity(
+        this.createAuditLogEntry(userId, 'data_access_processed', { dataCategories: Object.keys(redactedData) })
+      );
 
       return dataExport;
     } catch (error) {
@@ -298,12 +285,9 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
       await this.validatePortabilityFormat(portableData);
 
       // Log the portability request
-      await this.auditLogger.logActivity({
-        userId,
-        action: 'data_portability_processed',
-        details: { format: 'JSON', size: JSON.stringify(portableData).length },
-        timestamp: new Date()
-      });
+      await this.auditLogger.logActivity(
+        this.createAuditLogEntry(userId, 'data_portability_processed', { format: 'JSON', size: JSON.stringify(portableData).length })
+      );
 
       return portableData;
     } catch (error) {
@@ -327,12 +311,9 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
       await this.markUserAsErased(userId);
 
       // Log the erasure
-      await this.auditLogger.logActivity({
-        userId,
-        action: 'data_erasure_processed',
-        details: erasureCheck,
-        timestamp: new Date()
-      });
+      await this.auditLogger.logActivity(
+        this.createAuditLogEntry(userId, 'data_erasure_processed', erasureCheck)
+      );
 
       console.log(`Data erasure completed for user ${userId}`);
     } catch (error) {
@@ -350,12 +331,9 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
       const changes = await this.applyDataCorrections(userId, corrections);
 
       // Log the rectification
-      await this.auditLogger.logActivity({
-        userId,
-        action: 'data_rectification_processed',
-        details: { changes },
-        timestamp: new Date()
-      });
+      await this.auditLogger.logActivity(
+        this.createAuditLogEntry(userId, 'data_rectification_processed', { changes })
+      );
 
       // Notify affected systems
       await this.notifyDataCorrections(userId, changes);
@@ -403,12 +381,9 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
       await this.auditLogger.savePrivacySettings(userId, updatedSettings);
 
       // Log the update
-      await this.auditLogger.logActivity({
-        userId,
-        action: 'privacy_settings_updated',
-        details: { changedFields: Object.keys(settings) },
-        timestamp: new Date()
-      });
+      await this.auditLogger.logActivity(
+        this.createAuditLogEntry(userId, 'privacy_settings_updated', { changedFields: Object.keys(settings) })
+      );
 
       // Apply settings changes
       await this.applyPrivacySettingsChanges(userId, settings);
@@ -422,7 +397,76 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
 
   async applyPrivacyDefaults(userId: string): Promise<PrivacySettings> {
     const defaultSettings: PrivacySettings = {
-      dataMinimization: true,
+      dataProcessingConsent: {
+        personalData: {
+          id: this.generateId(),
+          userId,
+          consentType: 'data-processing',
+          granted: true,
+          grantedDate: new Date(),
+          withdrawn: false,
+          purpose: ['profile-management'],
+          legalBasis: 'consent',
+          consentVersion: '1.0',
+          timestamp: new Date()
+        },
+        sensitiveData: {
+          id: this.generateId(),
+          userId,
+          consentType: 'data-processing',
+          granted: false,
+          withdrawn: false,
+          purpose: ['sensitive-data'],
+          legalBasis: 'consent',
+          consentVersion: '1.0',
+          timestamp: new Date()
+        },
+        marketing: {
+          id: this.generateId(),
+          userId,
+          consentType: 'marketing',
+          granted: false,
+          withdrawn: false,
+          purpose: ['marketing'],
+          legalBasis: 'consent',
+          consentVersion: '1.0',
+          timestamp: new Date()
+        },
+        analytics: {
+          id: this.generateId(),
+          userId,
+          consentType: 'analytics',
+          granted: false,
+          withdrawn: false,
+          purpose: ['analytics'],
+          legalBasis: 'consent',
+          consentVersion: '1.0',
+          timestamp: new Date()
+        },
+        thirdParty: {
+          id: this.generateId(),
+          userId,
+          consentType: 'data-processing',
+          granted: false,
+          withdrawn: false,
+          purpose: ['third-party'],
+          legalBasis: 'consent',
+          consentVersion: '1.0',
+          timestamp: new Date()
+        },
+        research: {
+          id: this.generateId(),
+          userId,
+          consentType: 'data-processing',
+          granted: false,
+          withdrawn: false,
+          purpose: ['research'],
+          legalBasis: 'consent',
+          consentVersion: '1.0',
+          timestamp: new Date()
+        },
+        lastUpdated: new Date()
+      },
       profileVisibility: 'private',
       dataSharing: {
         hrSystem: false,
@@ -439,6 +483,32 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
         researchPartners: false,
         approvedPartners: []
       },
+      retention: {
+        retentionPeriod: 7,
+        autoDelete: true,
+        archiveAfter: 3,
+        deleteAfterTermination: true,
+        gracePeriod: 30,
+        exceptions: []
+      },
+      rights: {
+        accessRequests: [],
+        rectificationRequests: [],
+        erasureRequests: [],
+        portabilityRequests: [],
+        objectionRequests: []
+      },
+      auditTrail: [],
+      compliance: {
+        pdpaCompliant: true,
+        gdprCompliant: true,
+        localRegulations: [],
+        lastAssessment: new Date(),
+        assessmentResult: 'compliant',
+        remedialActions: []
+      },
+      lastUpdated: new Date(),
+      dataMinimization: true,
       communicationPreferences: {
         email: true,
         sms: false,
@@ -459,8 +529,7 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
         analytics: false,
         marketing: false,
         preferences: true
-      },
-      lastUpdated: new Date()
+      }
     };
 
     return await this.updatePrivacySettings(userId, defaultSettings);
@@ -499,12 +568,9 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
     
     await this.retentionManager.scheduleDeletion(userId, deletionDate);
     
-    await this.auditLogger.logActivity({
-      userId,
-      action: 'data_deletion_scheduled',
-      details: { deletionDate, retentionPeriod },
-      timestamp: new Date()
-    });
+    await this.auditLogger.logActivity(
+      this.createAuditLogEntry(userId, 'data_deletion_scheduled', { deletionDate, retentionPeriod })
+    );
   }
 
   async purgeExpiredData(): Promise<void> {
@@ -515,12 +581,9 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
         await this.purgeDataItem(item);
       }
       
-      await this.auditLogger.logActivity({
-        userId: 'system',
-        action: 'expired_data_purged',
-        details: { itemCount: expiredData.length },
-        timestamp: new Date()
-      });
+      await this.auditLogger.logActivity(
+        this.createAuditLogEntry('system', 'expired_data_purged', { itemCount: expiredData.length })
+      );
     } catch (error) {
       console.error('Error purging expired data:', error);
       throw new Error('Failed to purge expired data');
@@ -594,12 +657,9 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
       }
 
       // Log the breach report
-      await this.auditLogger.logActivity({
-        userId: 'system',
-        action: 'data_breach_reported',
-        details: { incidentId: incident.id, severity: impact.severity },
-        timestamp: new Date()
-      });
+      await this.auditLogger.logActivity(
+        this.createAuditLogEntry('system', 'data_breach_reported', { incidentId: incident.id, severity: impact.severity })
+      );
 
       return incident.id;
     } catch (error) {
@@ -625,12 +685,9 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
       for (const userId of userIds) {
         await this.notificationService.notifyDataBreach(userId, incident);
         
-        await this.auditLogger.logActivity({
-          userId,
-          action: 'data_breach_notification_sent',
-          details: { incidentId: incident.id },
-          timestamp: new Date()
-        });
+        await this.auditLogger.logActivity(
+          this.createAuditLogEntry(userId, 'data_breach_notification_sent', { incidentId: incident.id })
+        );
       }
     } catch (error) {
       console.error('Error notifying affected users:', error);
@@ -644,7 +701,8 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
 
   async validateDataMinimization(): Promise<any> {
     // Check if data collection and processing adheres to minimization principles
-    const dataUsage = await this.auditLogger.getDataUsageMetrics();
+    // Note: Data usage metrics would be used for compliance reporting
+    await this.auditLogger.getDataUsageMetrics();
     const unnecessaryData = await this.identifyUnnecessaryData();
     
     return {
@@ -705,8 +763,7 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
       action,
       details,
       performedBy: userId, // In a real system, this would be the current user/system
-      ipAddress,
-      userAgent: undefined
+      ...(ipAddress && { ipAddress })
     };
   }
 
@@ -747,38 +804,38 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
     return legalBases[consentType];
   }
 
-  private async getUserIpAddress(userId: string): Promise<string> {
+  private async getUserIpAddress(_userId: string): Promise<string> {
     // Get user's current IP address
     return '127.0.0.1'; // Placeholder
   }
 
-  private async getUserAgent(userId: string): Promise<string> {
+  private async getUserAgent(_userId: string): Promise<string> {
     // Get user's browser user agent
     return 'Mozilla/5.0...'; // Placeholder
   }
 
-  private async applyConsentRules(userId: string, consentType: ConsentType, granted: boolean): Promise<void> {
+  private async applyConsentRules(_userId: string, _consentType: ConsentType, _granted: boolean): Promise<void> {
     // Apply consent-based data processing rules
   }
 
-  private async processConsentWithdrawal(userId: string, consentType: ConsentType): Promise<void> {
+  private async processConsentWithdrawal(_userId: string, _consentType: ConsentType): Promise<void> {
     // Process consequences of consent withdrawal
   }
 
-  private async notifyConsentWithdrawal(userId: string, consentType: ConsentType): Promise<void> {
+  private async notifyConsentWithdrawal(_userId: string, _consentType: ConsentType): Promise<void> {
     // Notify relevant systems about consent withdrawal
   }
 
   // Additional private methods would be implemented here...
-  private async validateDataSubjectRequest(request: DataSubjectRequest): Promise<void> {
+  private async validateDataSubjectRequest(_request: DataSubjectRequest): Promise<void> {
     // Validate data subject request
   }
 
-  private async initiateAutomatedProcessing(request: DataSubjectRequest): Promise<void> {
+  private async initiateAutomatedProcessing(_request: DataSubjectRequest): Promise<void> {
     // Start automated processing for eligible requests
   }
 
-  private async compilePersonalData(userId: string): Promise<any> {
+  private async compilePersonalData(_userId: string): Promise<any> {
     // Compile all personal data for a user
     return {};
   }
@@ -788,43 +845,43 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
     return data;
   }
 
-  private async getRetentionInfo(userId: string): Promise<any> {
+  private async getRetentionInfo(_userId: string): Promise<any> {
     // Get retention information
     return {};
   }
 
-  private async generatePortableData(userId: string): Promise<any> {
+  private async generatePortableData(_userId: string): Promise<any> {
     // Generate portable data format
     return {};
   }
 
-  private async validatePortabilityFormat(data: any): Promise<void> {
+  private async validatePortabilityFormat(_data: any): Promise<void> {
     // Validate data portability format
   }
 
-  private async checkErasurePermissibility(userId: string): Promise<{ allowed: boolean; reason?: string }> {
+  private async checkErasurePermissibility(_userId: string): Promise<{ allowed: boolean; reason?: string }> {
     // Check if data erasure is legally permissible
     return { allowed: true };
   }
 
-  private async erasePersonalData(userId: string): Promise<void> {
+  private async erasePersonalData(_userId: string): Promise<void> {
     // Erase or anonymize personal data
   }
 
-  private async markUserAsErased(userId: string): Promise<void> {
+  private async markUserAsErased(_userId: string): Promise<void> {
     // Mark user record as erased
   }
 
-  private async validateCorrectionData(corrections: any): Promise<void> {
+  private async validateCorrectionData(_corrections: any): Promise<void> {
     // Validate correction data
   }
 
-  private async applyDataCorrections(userId: string, corrections: any): Promise<any> {
+  private async applyDataCorrections(_userId: string, _corrections: any): Promise<any> {
     // Apply data corrections
     return {};
   }
 
-  private async notifyDataCorrections(userId: string, changes: any): Promise<void> {
+  private async notifyDataCorrections(_userId: string, _changes: any): Promise<void> {
     // Notify affected systems about data corrections
   }
 
@@ -833,19 +890,19 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
     return settings;
   }
 
-  private async validatePrivacySettings(settings: PrivacySettings): Promise<void> {
+  private async validatePrivacySettings(_settings: PrivacySettings): Promise<void> {
     // Validate privacy settings
   }
 
-  private async applyPrivacySettingsChanges(userId: string, settings: Partial<PrivacySettings>): Promise<void> {
+  private async applyPrivacySettingsChanges(_userId: string, _settings: Partial<PrivacySettings>): Promise<void> {
     // Apply privacy settings changes
   }
 
-  private async applyRetentionPolicy(policy: RetentionPolicy): Promise<void> {
+  private async applyRetentionPolicy(_policy: RetentionPolicy): Promise<void> {
     // Apply specific retention policy
   }
 
-  private async purgeDataItem(item: any): Promise<void> {
+  private async purgeDataItem(_item: any): Promise<void> {
     // Purge specific data item
   }
 
@@ -870,12 +927,12 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
     return 'low';
   }
 
-  private async identifySafeguards(activity: DataProcessingActivity): Promise<string[]> {
+  private async identifySafeguards(_activity: DataProcessingActivity): Promise<string[]> {
     // Identify safeguards
     return [];
   }
 
-  private async identifyMitigationMeasures(activity: DataProcessingActivity): Promise<string[]> {
+  private async identifyMitigationMeasures(_activity: DataProcessingActivity): Promise<string[]> {
     // Identify mitigation measures
     return [];
   }
@@ -887,22 +944,22 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
     return date;
   }
 
-  private calculateBreachSeverity(incident: DataBreachIncident): string {
+  private calculateBreachSeverity(_incident: DataBreachIncident): string {
     // Calculate breach severity
     return 'medium';
   }
 
-  private async assessPotentialHarm(incident: DataBreachIncident): Promise<string[]> {
+  private async assessPotentialHarm(_incident: DataBreachIncident): Promise<string[]> {
     // Assess potential harm from breach
     return [];
   }
 
-  private async assessRegulatoryNotificationRequirement(incident: DataBreachIncident): Promise<{ required: boolean; deadline?: Date }> {
+  private async assessRegulatoryNotificationRequirement(_incident: DataBreachIncident): Promise<{ required: boolean; deadline?: Date }> {
     // Assess if regulatory notification is required
     return { required: false };
   }
 
-  private async initiateRegulatoryNotification(incident: DataBreachIncident, requirement: any): Promise<void> {
+  private async initiateRegulatoryNotification(_incident: DataBreachIncident, _requirement: any): Promise<void> {
     // Initiate regulatory notification
   }
 
@@ -911,7 +968,7 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
     return [];
   }
 
-  private async generateMinimizationRecommendations(data: any[]): Promise<any[]> {
+  private async generateMinimizationRecommendations(_data: any[]): Promise<any[]> {
     // Generate minimization recommendations
     return [];
   }
@@ -921,26 +978,26 @@ export class PrivacyComplianceService implements IPrivacyComplianceService {
     return [];
   }
 
-  private async generatePurposeCorrectionActions(violations: any[]): Promise<any[]> {
+  private async generatePurposeCorrectionActions(_violations: any[]): Promise<any[]> {
     // Generate purpose correction actions
     return [];
   }
 
-  private async validateTransferCompliance(transfers: any[]): Promise<any> {
+  private async validateTransferCompliance(_transfers: any[]): Promise<any> {
     // Validate transfer compliance
     return {};
   }
 
-  private async designPrivacyControls(feature: string): Promise<any> {
+  private async designPrivacyControls(_feature: string): Promise<any> {
     // Design privacy controls
     return {};
   }
 
-  private async deployPrivacyControls(controls: any): Promise<void> {
+  private async deployPrivacyControls(_controls: any): Promise<void> {
     // Deploy privacy controls
   }
 
-  private async assessMeasureEffectiveness(measures: any[]): Promise<any> {
+  private async assessMeasureEffectiveness(_measures: any[]): Promise<any> {
     // Assess measure effectiveness
     return {};
   }
