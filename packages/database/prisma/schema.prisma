@@ -1,0 +1,2549 @@
+// Comprehensive Prisma schema for integrated LMS/TMS system
+// Features: Multi-tenant, SSG-WSG integration, soft deletes, audit trails, full-text search
+
+generator client {
+    provider        = "prisma-client-js"
+    previewFeatures = ["postgresqlExtensions", "views", "relationJoins", "nativeDistinct"]
+}
+
+datasource db {
+    provider   = "postgresql"
+    url        = env("DATABASE_URL")
+    extensions = [postgis, pg_trgm, citext, uuid_ossp, pgcrypto]
+}
+
+// ============================================================================
+// SECURITY AND ACCESS CONTROL
+// ============================================================================
+
+model SecurityPolicy {
+    id           String  @id @default(cuid())
+    tenantId     String
+    resourceType String // Model name (e.g., "Course", "User")
+    resourceId   String? // Specific resource ID (null for type-level policies)
+
+    // Policy definition
+    policyName String
+    policyType PolicyType @default(ALLOW)
+    conditions Json // Conditions for policy application
+
+    // Access permissions
+    canRead   Boolean @default(false)
+    canWrite  Boolean @default(false)
+    canDelete Boolean @default(false)
+    canAdmin  Boolean @default(false)
+
+    // Scope
+    userRoles       UserRole[] // Applicable user roles
+    organizationIds String[] // Applicable organizations
+    departmentIds   String[] // Applicable departments
+
+    // Validity
+    validFrom  DateTime  @default(now())
+    validUntil DateTime?
+    isActive   Boolean   @default(true)
+
+    // Priority for policy conflicts
+    priority Int @default(0)
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    createdBy String
+    updatedBy String?
+
+    @@index([tenantId])
+    @@index([resourceType])
+    @@index([resourceType, resourceId])
+    @@index([policyType])
+    @@index([isActive])
+    @@index([validFrom, validUntil])
+    @@index([priority])
+    @@map("security_policies")
+}
+
+model DataClassification {
+    id       String @id @default(cuid())
+    tenantId String
+
+    // Classification details
+    resourceType   String // Table/model name
+    fieldName      String // Field name
+    classification DataClassificationType @default(INTERNAL)
+
+    // Encryption requirements
+    encryptionRequired Boolean         @default(false)
+    encryptionMethod   EncryptionType?
+    keyRotationPeriod  Int? // Days
+
+    // Access controls
+    minimumRole   UserRole @default(LEARNER)
+    auditRequired Boolean  @default(false)
+
+    // Compliance
+    retentionPeriod Int? // Days (null = indefinite)
+    gdprApplicable  Boolean @default(false)
+    pdpaApplicable  Boolean @default(true) // Singapore PDPA
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([tenantId, resourceType, fieldName])
+    @@index([tenantId])
+    @@index([classification])
+    @@index([encryptionRequired])
+    @@map("data_classifications")
+}
+
+model EncryptionKey {
+    id       String @id @default(cuid())
+    tenantId String
+
+    // Key details
+    keyName   String
+    keyType   EncryptionType
+    algorithm String         @default("AES-256-GCM")
+
+    // Key material (encrypted)
+    encryptedKey   String // The actual key, encrypted with master key
+    keyFingerprint String // Hash for verification
+
+    // Key lifecycle
+    version   Int       @default(1)
+    isActive  Boolean   @default(true)
+    createdAt DateTime  @default(now())
+    expiresAt DateTime?
+    rotatedAt DateTime?
+
+    // Usage tracking
+    usageCount Int       @default(0)
+    lastUsedAt DateTime?
+
+    @@unique([tenantId, keyName, version])
+    @@index([tenantId])
+    @@index([keyType])
+    @@index([isActive])
+    @@index([expiresAt])
+    @@map("encryption_keys")
+}
+
+// ============================================================================
+// CONSTRAINT VALIDATIONS AND BUSINESS RULES
+// ============================================================================
+
+model ValidationRule {
+    id       String @id @default(cuid())
+    tenantId String
+
+    // Rule definition
+    ruleName    String
+    description String?
+    ruleType    ValidationType @default(FIELD_VALIDATION)
+
+    // Target
+    targetModel String // Model name
+    targetField String? // Field name (null for model-level rules)
+
+    // Validation logic
+    validationLogic Json // Contains validation expressions
+    errorMessage    String // Custom error message
+    warningMessage  String? // Optional warning message
+
+    // Rule behavior
+    isActive         Boolean       @default(true)
+    severity         SeverityLevel @default(ERROR)
+    blockingSeverity Boolean       @default(true) // If true, errors block operations
+
+    // Execution context
+    executeOnCreate Boolean @default(true)
+    executeOnUpdate Boolean @default(true)
+    executeOnDelete Boolean @default(false)
+
+    // Priority and dependencies
+    priority       Int      @default(0)
+    dependsOnRules String[] // Rule IDs this rule depends on
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    createdBy String
+    updatedBy String?
+
+    // Relations
+    validationResults ValidationResult[]
+
+    @@unique([tenantId, ruleName])
+    @@index([tenantId])
+    @@index([targetModel])
+    @@index([targetModel, targetField])
+    @@index([ruleType])
+    @@index([isActive])
+    @@index([severity])
+    @@map("validation_rules")
+}
+
+model ValidationResult {
+    id       String         @id @default(cuid())
+    tenantId String
+    ruleId   String
+    rule     ValidationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+    // Validation context
+    entityType String // Model name
+    entityId   String // Record ID
+    fieldName  String? // Field name if field-level
+
+    // Result
+    isValid        Boolean
+    severity       SeverityLevel
+    errorMessage   String?
+    warningMessage String?
+
+    // Values
+    submittedValue Json? // Value that was validated
+    expectedValue  Json? // Expected value range/format
+
+    // Metadata
+    validatedAt DateTime @default(now())
+    validatedBy String? // User ID who triggered validation
+
+    @@index([tenantId])
+    @@index([ruleId])
+    @@index([entityType, entityId])
+    @@index([isValid])
+    @@index([severity])
+    @@index([validatedAt])
+    @@map("validation_results")
+}
+
+// ============================================================================
+// COMPLEX MANY-TO-MANY JUNCTION TABLES
+// ============================================================================
+
+model UserRoleAssignment {
+    id     String   @id @default(cuid())
+    userId String
+    user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    role   UserRole
+
+    // Assignment context
+    tenantId       String
+    organizationId String?
+    departmentId   String?
+
+    // Scope and limitations
+    permissions  String[] // Specific permissions within the role
+    restrictions Json? // Role-specific restrictions
+
+    // Temporal aspects
+    assignedAt DateTime  @default(now())
+    validFrom  DateTime  @default(now())
+    validUntil DateTime?
+    isActive   Boolean   @default(true)
+
+    // Assignment metadata
+    assignedBy       String // User ID who assigned the role
+    assignmentReason String?
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([userId, role, tenantId, organizationId, departmentId])
+    @@index([userId])
+    @@index([role])
+    @@index([tenantId])
+    @@index([organizationId])
+    @@index([isActive])
+    @@index([validFrom, validUntil])
+    @@map("user_role_assignments")
+}
+
+model CoursePrerequisite {
+    id                   String @id @default(cuid())
+    courseId             String
+    course               Course @relation("CoursePrerequisites", fields: [courseId], references: [id], onDelete: Cascade)
+    prerequisiteCourseId String
+    prerequisiteCourse   Course @relation("PrerequisiteCourse", fields: [prerequisiteCourseId], references: [id], onDelete: Cascade)
+
+    // Prerequisite type and requirements
+    prerequisiteType PrerequisiteType @default(COMPLETION)
+    minimumGrade     String? // Minimum grade required
+    minimumScore     Int? // Minimum score percentage
+
+    // Validation settings
+    isStrict              Boolean @default(true) // If false, allows bypass with approval
+    canWaive              Boolean @default(false)
+    waiveApprovalRequired Boolean @default(true)
+
+    // Timing
+    createdAt DateTime @default(now())
+
+    @@unique([courseId, prerequisiteCourseId])
+    @@index([courseId])
+    @@index([prerequisiteCourseId])
+    @@index([prerequisiteType])
+    @@map("course_prerequisites")
+}
+
+model SkillCompetencyMatrix {
+    id             String @id @default(cuid())
+    skillId        String
+    skill          Skill  @relation("SkillCompetencies", fields: [skillId], references: [id], onDelete: Cascade)
+    relatedSkillId String
+    relatedSkill   Skill  @relation("RelatedSkillCompetencies", fields: [relatedSkillId], references: [id], onDelete: Cascade)
+
+    // Relationship type
+    relationshipType CompetencyRelationType @default(COMPLEMENTARY)
+    strength         RelationshipStrength   @default(MEDIUM)
+
+    // Learning path
+    isPathway    Boolean @default(false)
+    pathwayOrder Int? // Order in learning pathway
+
+    // Weights for skill calculations
+    correlationWeight Decimal? @db.Decimal(3, 2) // 0.00 to 1.00
+
+    // Metadata
+    establishedBy String? // User ID who established the relationship
+    evidenceType  EvidenceType?
+    evidenceUrl   String?
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([skillId, relatedSkillId, relationshipType])
+    @@index([skillId])
+    @@index([relatedSkillId])
+    @@index([relationshipType])
+    @@index([isPathway])
+    @@map("skill_competency_matrix")
+}
+
+model LearningPathway {
+    id       String @id @default(cuid())
+    tenantId String
+
+    // Pathway details
+    name        String
+    description String?         @db.Text
+    category    PathwayCategory @default(SKILL_BASED)
+
+    // Target and requirements
+    targetRole     String? // Job role this pathway prepares for
+    targetLevel    SkillLevel      @default(PRACTITIONER)
+    estimatedHours Int?
+    difficulty     DifficultyLevel @default(INTERMEDIATE)
+
+    // Status
+    status   ContentStatus @default(DRAFT)
+    isPublic Boolean       @default(false)
+
+    // Metadata
+    tags          String[]
+    prerequisites String[] // General prerequisites
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    createdBy String
+
+    // Relations
+    steps       LearningPathwayStep[]
+    enrollments PathwayEnrollment[]
+
+    @@index([tenantId])
+    @@index([category])
+    @@index([targetLevel])
+    @@index([status])
+    @@index([isPublic])
+    @@map("learning_pathways")
+}
+
+model LearningPathwayStep {
+    id        String          @id @default(cuid())
+    pathwayId String
+    pathway   LearningPathway @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
+
+    // Step details
+    stepNumber  Int
+    title       String
+    description String?
+    stepType    PathwayStepType @default(COURSE)
+
+    // Content reference
+    courseId     String?
+    course       Course?     @relation(fields: [courseId], references: [id])
+    assessmentId String?
+    assessment   Assessment? @relation(fields: [assessmentId], references: [id])
+    skillId      String?
+    skill        Skill?      @relation(fields: [skillId], references: [id])
+
+    // Requirements
+    isRequired     Boolean @default(true)
+    minimumScore   Int? // Minimum score to pass this step
+    estimatedHours Int?
+
+    // Dependencies
+    dependsOnSteps String[] // Step IDs this step depends on
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([pathwayId, stepNumber])
+    @@index([pathwayId])
+    @@index([stepType])
+    @@index([courseId])
+    @@index([assessmentId])
+    @@map("learning_pathway_steps")
+}
+
+model PathwayEnrollment {
+    id        String          @id @default(cuid())
+    userId    String
+    user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+    pathwayId String
+    pathway   LearningPathway @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
+
+    // Enrollment details
+    status        EnrollmentStatus @default(ENROLLED)
+    progress      Int              @default(0) // Percentage completed
+    currentStepId String? // Current step in pathway
+
+    // Timing
+    enrolledAt           DateTime  @default(now())
+    startedAt            DateTime?
+    targetCompletionDate DateTime?
+    completedAt          DateTime?
+
+    // Performance
+    overallScore   Decimal? @db.Decimal(5, 2)
+    completedSteps Int      @default(0)
+    totalSteps     Int
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([userId, pathwayId])
+    @@index([userId])
+    @@index([pathwayId])
+    @@index([status])
+    @@index([enrolledAt])
+    @@map("pathway_enrollments")
+}
+
+// ============================================================================
+// CORE TENANT & USER MANAGEMENT
+// ============================================================================
+
+model Tenant {
+    id               String  @id @default(cuid())
+    name             String
+    slug             String  @unique
+    domain           String? @unique
+    logo             String?
+    settings         Json    @default("{}")
+    subscriptionPlan String  @default("basic")
+    maxUsers         Int     @default(100)
+    isActive         Boolean @default(true)
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1) // Optimistic locking
+
+    // Relations
+    users            User[]
+    organizations    Organization[]
+    courses          Course[]
+    trainingPrograms TrainingProgram[]
+    skills           Skill[]
+    fundingSchemes   FundingScheme[]
+
+    @@index([slug])
+    @@index([domain])
+    @@map("tenants")
+}
+
+model Organization {
+    id       String      @id @default(cuid())
+    tenantId String
+    tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+    name     String
+    code     String // UEN/Company Registration
+    industry String?
+    size     CompanySize @default(SMALL)
+    address  Json? // Structured address
+
+    // SSG-WSG Integration
+    ssgRegistered Boolean @default(false)
+    wsgEligible   Boolean @default(false)
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+
+    // Relations
+    users               User[]
+    departments         Department[]
+    trainingRequests    TrainingRequest[]
+    fundingApplications FundingApplication[]
+
+    @@unique([tenantId, code])
+    @@index([tenantId])
+    @@index([code])
+    @@map("organizations")
+}
+
+model Department {
+    id             String       @id @default(cuid())
+    organizationId String
+    organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+    name           String
+    code           String
+    description    String?
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+
+    // Relations
+    users User[]
+
+    @@unique([organizationId, code])
+    @@index([organizationId])
+    @@map("departments")
+}
+
+model User {
+    id             String        @id @default(cuid())
+    tenantId       String
+    tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+    organizationId String?
+    organization   Organization? @relation(fields: [organizationId], references: [id])
+    departmentId   String?
+    department     Department?   @relation(fields: [departmentId], references: [id])
+
+    // Authentication
+    email         String
+    emailVerified DateTime?
+    password      String? // Nullable for SSO users
+    salt          String? // For password hashing
+
+    // Profile
+    firstName   String
+    lastName    String
+    displayName String?
+    avatar      String?
+    phone       String?
+    dateOfBirth DateTime?
+    gender      Gender?
+    nationality String?
+
+    // Employment details
+    employeeId  String?
+    jobTitle    String?
+    role        UserRole     @default(LEARNER)
+    permissions Permission[]
+    startDate   DateTime?
+    endDate     DateTime?
+
+    // SSG-WSG Integration (Encrypted fields)
+    nricFin        String? // Encrypted with pgcrypto
+    skillsfutureId String? // Encrypted with pgcrypto
+    wsgEligible    Boolean @default(false)
+
+    // Security fields
+    passwordHash  String? // Hashed password (renamed from password)
+    mfaSecret     String? // Encrypted MFA secret
+    mfaEnabled    Boolean   @default(false)
+    loginAttempts Int       @default(0)
+    lockedUntil   DateTime?
+
+    // Privacy and consent
+    dataProcessingConsent Boolean   @default(false)
+    marketingConsent      Boolean   @default(false)
+    consentDate           DateTime?
+
+    // Session security
+    sessionFingerprint String? // Browser fingerprint
+    lastIpAddress      String?
+    suspiciousActivity Json? // Security events log
+
+    // Settings
+    locale      String @default("en")
+    timezone    String @default("Asia/Singapore")
+    preferences Json   @default("{}")
+
+    // Status
+    status             UserStatus @default(ACTIVE)
+    lastLoginAt        DateTime?
+    emailNotifications Boolean    @default(true)
+    smsNotifications   Boolean    @default(false)
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+    createdBy String?
+    updatedBy String?
+
+    // Relations
+    sessions                   Session[]
+    accounts                   Account[]
+    enrollments                Enrollment[]
+    trainingEnrollments        TrainingEnrollment[]
+    submissions                Submission[]
+    assessmentAttempts         AssessmentAttempt[]
+    coursesInstructed          Course[]              @relation("CourseInstructor")
+    trainingSessionsInstructed TrainingSession[]     @relation("TrainingInstructor")
+    skillAssessments           UserSkillAssessment[]
+    certifications             UserCertification[]
+    fundingApplications        FundingApplication[]
+    auditLogs                  AuditLog[]
+    progressTracking           ProgressTracking[]
+    roleAssignments            UserRoleAssignment[]
+    pathwayEnrollments         PathwayEnrollment[]
+    securityEvents             SecurityEvent[]
+    mfaDevices                 MFADevice[]
+    authenticationLogs         AuthenticationLog[]
+    passwordHistory            PasswordHistory[]
+
+    @@unique([tenantId, email])
+    @@unique([tenantId, employeeId]) // Ensure unique employee ID per tenant
+    // Performance indexes
+    @@index([tenantId])
+    @@index([organizationId])
+    @@index([email])
+    @@index([employeeId])
+    @@index([role])
+    @@index([status])
+    // Composite indexes for common queries
+    @@index([tenantId, organizationId])
+    @@index([tenantId, role])
+    @@index([tenantId, status])
+    @@index([organizationId, departmentId])
+    @@index([role, status])
+    @@index([lastLoginAt])
+    @@index([createdAt])
+    // Security indexes
+    @@index([loginAttempts])
+    @@index([lockedUntil])
+    @@index([lastIpAddress])
+    @@map("users")
+}
+
+model Account {
+    id                String  @id @default(cuid())
+    userId            String
+    type              String
+    provider          String
+    providerAccountId String
+    refresh_token     String? @db.Text
+    access_token      String? @db.Text
+    expires_at        Int?
+    token_type        String?
+    scope             String?
+    id_token          String? @db.Text
+    session_state     String?
+
+    // Enterprise SSO fields
+    samlResponse String? @db.Text // SAML response data
+    samlNameId   String? // SAML NameID
+    orgClaim     String? // Organization claim from SSO
+    roleClaim    String? // Role claim from SSO
+
+    // Account metadata
+    lastUsed DateTime?
+    isActive Boolean   @default(true)
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([provider, providerAccountId])
+    @@index([userId])
+    @@index([provider])
+    @@index([isActive])
+    @@map("accounts")
+}
+
+model Session {
+    id           String   @id @default(cuid())
+    sessionToken String   @unique
+    userId       String
+    expires      DateTime
+    ipAddress    String?
+    userAgent    String?
+
+    // Enhanced session security
+    fingerprint String? // Browser fingerprint
+    geoLocation Json? // Geographic location data
+    deviceInfo  Json? // Device information
+    riskScore   Int     @default(0) // Risk assessment score (0-100)
+
+    // Session management
+    isActive      Boolean  @default(true)
+    lastActivity  DateTime @default(now())
+    maxInactivity Int      @default(3600) // Seconds
+
+    // Concurrent session control
+    sessionType SessionType @default(WEB)
+    deviceId    String? // Unique device identifier
+
+    // Security flags
+    isTrusted   Boolean @default(false)
+    requiresMFA Boolean @default(false)
+    mfaVerified Boolean @default(false)
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+    securityEvents SecurityEvent[]
+
+    @@index([userId])
+    @@index([sessionToken])
+    @@index([isActive])
+    @@index([expires])
+    @@index([deviceId])
+    @@index([lastActivity])
+    @@map("sessions")
+}
+
+model SecurityEvent {
+    id        String   @id @default(cuid())
+    sessionId String?
+    session   Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+    userId    String?
+    user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+    // Event details
+    eventType   SecurityEventType
+    severity    SecuritySeverity  @default(LOW)
+    description String
+    details     Json? // Additional event data
+
+    // Context
+    ipAddress String?
+    userAgent String?
+    location  Json? // Geographic data
+
+    // Resolution
+    status     EventStatus @default(OPEN)
+    resolvedAt DateTime?
+    resolvedBy String? // User ID who resolved
+    resolution String? // Resolution notes
+
+    // Metadata
+    source        String? // Event source system
+    ruleTriggered String? // Security rule that triggered event
+
+    // Timestamps
+    occurredAt DateTime @default(now())
+    createdAt  DateTime @default(now())
+
+    @@index([eventType])
+    @@index([severity])
+    @@index([status])
+    @@index([userId])
+    @@index([occurredAt])
+    @@index([ipAddress])
+    @@map("security_events")
+}
+
+model MFADevice {
+    id     String @id @default(cuid())
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    // Device details
+    deviceName  String
+    deviceType  MFAType
+    secret      String // Encrypted TOTP secret or device identifier
+    backupCodes String[] // Encrypted backup codes
+
+    // Status
+    isActive   Boolean @default(true)
+    isVerified Boolean @default(false)
+    isPrimary  Boolean @default(false)
+
+    // Usage tracking
+    lastUsed       DateTime?
+    useCount       Int       @default(0)
+    failedAttempts Int       @default(0)
+
+    // Device metadata
+    deviceFingerprint String? // Device-specific fingerprint
+    registrationIP    String?
+    registrationUA    String? // User agent at registration
+
+    // Audit fields
+    createdAt  DateTime  @default(now())
+    updatedAt  DateTime  @updatedAt
+    verifiedAt DateTime?
+
+    @@index([userId])
+    @@index([deviceType])
+    @@index([isActive])
+    @@index([isPrimary])
+    @@map("mfa_devices")
+}
+
+model AuthenticationLog {
+    id     String  @id @default(cuid())
+    userId String?
+    user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+    // Authentication details
+    authType   AuthType
+    authMethod AuthMethod
+    provider   String? // OAuth provider or 'local'
+
+    // Attempt details
+    success       Boolean
+    failureReason String?
+    ipAddress     String
+    userAgent     String?
+    location      Json? // GeoIP data
+
+    // MFA details
+    mfaRequired  Boolean  @default(false)
+    mfaCompleted Boolean  @default(false)
+    mfaMethod    MFAType?
+
+    // Session context
+    sessionId   String?
+    deviceId    String?
+    fingerprint String?
+
+    // Risk assessment
+    riskScore   Int      @default(0) // 0-100
+    riskFactors String[] // Risk indicators
+    blocked     Boolean  @default(false)
+    blockReason String?
+
+    // Timing
+    attemptedAt DateTime  @default(now())
+    completedAt DateTime?
+    duration    Int? // Milliseconds
+
+    @@index([userId])
+    @@index([success])
+    @@index([authType])
+    @@index([attemptedAt])
+    @@index([ipAddress])
+    @@index([blocked])
+    @@map("authentication_logs")
+}
+
+model PasswordPolicy {
+    id       String @id @default(cuid())
+    tenantId String
+
+    // Policy configuration
+    name        String
+    description String?
+    isDefault   Boolean @default(false)
+    isActive    Boolean @default(true)
+
+    // Password requirements
+    minLength        Int     @default(8)
+    maxLength        Int     @default(128)
+    requireUppercase Boolean @default(true)
+    requireLowercase Boolean @default(true)
+    requireNumbers   Boolean @default(true)
+    requireSymbols   Boolean @default(true)
+    forbidCommon     Boolean @default(true)
+    forbidPersonal   Boolean @default(true)
+
+    // History and rotation
+    historyCount Int  @default(12) // Remember last N passwords
+    maxAge       Int? // Days until forced rotation
+    warnDays     Int  @default(7) // Days before expiry to warn
+
+    // Attempt controls
+    maxAttempts     Int @default(5)
+    lockoutDuration Int @default(1800) // Seconds
+
+    // Advanced rules
+    customRegex    String? // Custom validation regex
+    blacklistWords String[] // Forbidden words
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    createdBy String
+
+    @@unique([tenantId, name])
+    @@index([tenantId])
+    @@index([isDefault])
+    @@index([isActive])
+    @@map("password_policies")
+}
+
+model PasswordHistory {
+    id     String @id @default(cuid())
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    // Password data
+    passwordHash String
+    salt         String?
+    algorithm    String  @default("bcrypt")
+
+    // Metadata
+    createdAt     DateTime  @default(now())
+    expiresAt     DateTime?
+    resetRequired Boolean   @default(false)
+
+    // Context
+    changedBy    String? // User ID who changed it (for admin resets)
+    changeReason String? // Reason for change
+    ipAddress    String?
+    userAgent    String?
+
+    @@index([userId])
+    @@index([createdAt])
+    @@index([expiresAt])
+    @@map("password_history")
+}
+
+model Permission {
+    id          String  @id @default(cuid())
+    name        String  @unique
+    description String?
+    category    String
+
+    // Permission hierarchy
+    parentId String?
+    parent   Permission?  @relation("PermissionHierarchy", fields: [parentId], references: [id])
+    children Permission[] @relation("PermissionHierarchy")
+
+    // Metadata
+    resource String? // Resource type this permission applies to
+    action   String? // Action this permission allows
+    scope    String? // Scope of the permission
+
+    // Status
+    isActive Boolean @default(true)
+    isSystem Boolean @default(false) // System permissions cannot be deleted
+
+    users User[]
+
+    @@index([category])
+    @@map("permissions")
+}
+
+// ============================================================================
+// SKILLS FRAMEWORK (SSG-WSG Integration)
+// ============================================================================
+
+model SkillFramework {
+    id          String    @id @default(cuid())
+    name        String
+    version     String
+    description String?
+    isActive    Boolean   @default(true)
+    publishedAt DateTime?
+
+    // Relations
+    skills Skill[]
+
+    @@unique([name, version])
+    @@map("skill_frameworks")
+}
+
+model Skill {
+    id          String          @id @default(cuid())
+    tenantId    String
+    tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+    frameworkId String?
+    framework   SkillFramework? @relation(fields: [frameworkId], references: [id])
+
+    code        String
+    name        String
+    description String?
+    category    SkillCategory
+    level       SkillLevel
+
+    // SSG Integration
+    ssgSkillCode String?
+    wsqLevel     String?
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+
+    // Relations
+    courses             CourseSkill[]
+    trainingPrograms    TrainingProgramSkill[]
+    assessments         SkillAssessment[]
+    userAssessments     UserSkillAssessment[]
+    prerequisites       SkillPrerequisite[]     @relation("PrerequisiteSkill")
+    dependentSkills     SkillPrerequisite[]     @relation("RequiredSkill")
+    questions           Question[]
+    competencies        SkillCompetencyMatrix[] @relation("SkillCompetencies")
+    relatedCompetencies SkillCompetencyMatrix[] @relation("RelatedSkillCompetencies")
+    pathwaySteps        LearningPathwayStep[]
+
+    @@unique([tenantId, code])
+    @@index([tenantId])
+    @@index([category])
+    @@index([level])
+    @@index([ssgSkillCode])
+    @@map("skills")
+}
+
+model SkillPrerequisite {
+    id                  String @id @default(cuid())
+    skillId             String
+    skill               Skill  @relation("PrerequisiteSkill", fields: [skillId], references: [id], onDelete: Cascade)
+    prerequisiteSkillId String
+    prerequisiteSkill   Skill  @relation("RequiredSkill", fields: [prerequisiteSkillId], references: [id], onDelete: Cascade)
+
+    @@unique([skillId, prerequisiteSkillId])
+    @@map("skill_prerequisites")
+}
+
+model UserSkillAssessment {
+    id      String @id @default(cuid())
+    userId  String
+    user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+    skillId String
+    skill   Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+    currentLevel SkillLevel
+    targetLevel  SkillLevel?
+    assessedAt   DateTime
+    assessedBy   String?
+    validUntil   DateTime?
+
+    // Evidence
+    evidenceType EvidenceType
+    evidenceUrl  String?
+    notes        String?
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    version   Int      @default(1)
+
+    @@unique([userId, skillId])
+    @@index([userId])
+    @@index([skillId])
+    @@index([assessedAt])
+    @@map("user_skill_assessments")
+}
+
+// ============================================================================
+// LEARNING MANAGEMENT SYSTEM (LMS)
+// ============================================================================
+
+model Course {
+    id       String @id @default(cuid())
+    tenantId String
+    tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+    // Basic information
+    title            String
+    description      String?
+    shortDescription String?
+    thumbnail        String?
+    bannerImage      String?
+
+    // Content
+    objectives    String[]
+    prerequisites String[]
+    outline       Json?
+
+    // Categorization
+    category    CourseCategory
+    subCategory String?
+    tags        String[]
+    language    String         @default("en")
+
+    // Difficulty and timing
+    difficulty     DifficultyLevel @default(BEGINNER)
+    estimatedHours Int?
+    maxDuration    Int? // Maximum days to complete
+
+    // Instructors and content
+    instructorId  String
+    instructor    User     @relation("CourseInstructor", fields: [instructorId], references: [id])
+    coInstructors String[] // Array of user IDs
+
+    // Publishing and access
+    status           ContentStatus @default(DRAFT)
+    publishedAt      DateTime?
+    isPublic         Boolean       @default(false)
+    requiresApproval Boolean       @default(false)
+    maxEnrollments   Int?
+
+    // Pricing (for commercial courses)
+    price    Decimal? @db.Decimal(10, 2)
+    currency String   @default("SGD")
+
+    // SSG-WSG Integration
+    ssgApproved   Boolean @default(false)
+    ssgCourseCode String?
+    wsgEligible   Boolean @default(false)
+    cpPoints      Int? // Continuing Professional Development points
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+    createdBy String?
+    updatedBy String?
+
+    // Relations
+    modules             Module[]
+    enrollments         Enrollment[]
+    skills              CourseSkill[]
+    assessments         Assessment[]
+    certificates        Certificate[]
+    reviews             CourseReview[]
+    coursePrerequisites CoursePrerequisite[]  @relation("CoursePrerequisites")
+    prerequisiteFor     CoursePrerequisite[]  @relation("PrerequisiteCourse")
+    pathwaySteps        LearningPathwayStep[]
+
+    // Performance indexes
+    @@index([tenantId])
+    @@index([category])
+    @@index([status])
+    @@index([instructorId])
+    @@index([ssgCourseCode])
+    @@index([publishedAt])
+    // Composite indexes for complex queries
+    @@index([tenantId, category])
+    @@index([tenantId, status])
+    @@index([tenantId, publishedAt])
+    @@index([category, difficulty])
+    @@index([status, publishedAt])
+    @@index([ssgApproved, wsgEligible])
+    // Search and filtering indexes
+    @@index([difficulty])
+    @@index([estimatedHours])
+    @@index([maxEnrollments])
+    @@index([language])
+    @@index([isPublic])
+    @@index([price])
+    // Audit indexes
+    @@index([createdAt])
+    @@index([updatedAt])
+    @@index([deletedAt])
+    @@map("courses")
+}
+
+model CourseSkill {
+    id       String @id @default(cuid())
+    courseId String
+    course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+    skillId  String
+    skill    Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+    targetLevel SkillLevel
+    weight      Int        @default(1) // Importance weight
+
+    @@unique([courseId, skillId])
+    @@map("course_skills")
+}
+
+model Module {
+    id       String @id @default(cuid())
+    courseId String
+    course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+    title          String
+    description    String?
+    content        String? @db.Text
+    order          Int
+    estimatedHours Int?
+
+    // Prerequisites
+    prerequisiteModules String[] // Array of module IDs
+
+    // Status
+    status     ContentStatus @default(DRAFT)
+    isOptional Boolean       @default(false)
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+
+    // Relations
+    lessons          Lesson[]
+    assignments      Assignment[]
+    progressTracking ProgressTracking[]
+
+    @@index([courseId])
+    @@index([order])
+    @@map("modules")
+}
+
+model Lesson {
+    id       String @id @default(cuid())
+    moduleId String
+    module   Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+    title       String
+    description String?
+    content     String?    @db.Text
+    type        LessonType @default(TEXT)
+    order       Int
+    duration    Int? // in minutes
+
+    // Media content
+    videoUrl           String?
+    audioUrl           String?
+    documentUrl        String?
+    interactiveContent Json? // For interactive lessons
+
+    // Completion tracking
+    requiresCompletion Boolean @default(true)
+    completionCriteria Json?
+
+    // Status
+    status ContentStatus @default(DRAFT)
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+
+    // Relations
+    progressTracking ProgressTracking[]
+
+    @@index([moduleId])
+    @@index([order])
+    @@index([type])
+    @@map("lessons")
+}
+
+model Assignment {
+    id       String  @id @default(cuid())
+    moduleId String?
+    module   Module? @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+    title        String
+    description  String         @db.Text
+    instructions String?        @db.Text
+    type         AssignmentType @default(ESSAY)
+
+    // Timing
+    dueDate             DateTime?
+    allowLateSubmission Boolean   @default(false)
+    latePenalty         Int? // Percentage penalty per day
+
+    // Grading
+    maxScore      Int     @default(100)
+    passingScore  Int     @default(60)
+    gradingRubric Json?
+    autoGrading   Boolean @default(false)
+
+    // Submission settings
+    maxAttempts       Int      @default(1)
+    fileUploadAllowed Boolean  @default(true)
+    allowedFileTypes  String[]
+    maxFileSize       Int? // in MB
+
+    // Status
+    status ContentStatus @default(DRAFT)
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+
+    // Relations
+    submissions Submission[]
+
+    @@index([moduleId])
+    @@index([dueDate])
+    @@index([status])
+    @@map("assignments")
+}
+
+model Submission {
+    id           String     @id @default(cuid())
+    assignmentId String
+    assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+    userId       String
+    user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    // Submission content
+    content       String? @db.Text
+    attachments   Json? // File attachments metadata
+    attemptNumber Int     @default(1)
+
+    // Grading
+    score        Int?
+    maxScore     Int
+    percentage   Decimal? @db.Decimal(5, 2)
+    feedback     String?  @db.Text
+    rubricScores Json? // Detailed rubric scoring
+
+    // Status and timing
+    status      SubmissionStatus @default(SUBMITTED)
+    submittedAt DateTime         @default(now())
+    gradedAt    DateTime?
+    gradedBy    String? // User ID of grader
+
+    // Late submission tracking
+    isLate         Boolean @default(false)
+    lateDays       Int     @default(0)
+    penaltyApplied Int     @default(0)
+
+    // Audit fields
+    version Int @default(1)
+
+    @@unique([assignmentId, userId, attemptNumber])
+    @@index([assignmentId])
+    @@index([userId])
+    @@index([status])
+    @@index([submittedAt])
+    @@map("submissions")
+}
+
+model Enrollment {
+    id       String @id @default(cuid())
+    userId   String
+    user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+    courseId String
+    course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+    // Enrollment details
+    status   EnrollmentStatus @default(ENROLLED)
+    progress Int              @default(0) // 0-100 percentage
+    grade    String? // Final grade
+    score    Decimal?         @db.Decimal(5, 2) // Final score percentage
+
+    // Timing
+    enrolledAt          DateTime  @default(now())
+    startedAt           DateTime?
+    completedAt         DateTime?
+    certificateIssuedAt DateTime?
+
+    // Settings
+    notifications Boolean @default(true)
+
+    // Funding information
+    fundingApplicationId String?
+    fundingApplication   FundingApplication? @relation(fields: [fundingApplicationId], references: [id])
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    version   Int      @default(1)
+
+    @@unique([userId, courseId])
+    @@index([userId])
+    @@index([courseId])
+    @@index([status])
+    @@index([enrolledAt])
+    @@map("enrollments")
+}
+
+model ProgressTracking {
+    id       String  @id @default(cuid())
+    userId   String
+    user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    courseId String
+    moduleId String?
+    module   Module? @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+    lessonId String?
+    lesson   Lesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+    // Progress details
+    status         ProgressStatus @default(NOT_STARTED)
+    timeSpent      Int            @default(0) // in minutes
+    completionRate Int            @default(0) // 0-100 percentage
+
+    // Timestamps
+    startedAt      DateTime?
+    lastAccessedAt DateTime?
+    completedAt    DateTime?
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([userId, courseId, moduleId, lessonId])
+    @@index([userId])
+    @@index([courseId])
+    @@index([status])
+    @@map("progress_tracking")
+}
+
+model CourseReview {
+    id       String @id @default(cuid())
+    courseId String
+    course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+    userId   String
+
+    // Review content
+    rating  Int // 1-5 stars
+    title   String?
+    comment String? @db.Text
+
+    // Verification
+    isVerified Boolean   @default(false)
+    verifiedAt DateTime?
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+
+    @@unique([courseId, userId])
+    @@index([courseId])
+    @@index([rating])
+    @@map("course_reviews")
+}
+
+// ============================================================================
+// TRAINING MANAGEMENT SYSTEM (TMS)
+// ============================================================================
+
+model TrainingProgram {
+    id       String @id @default(cuid())
+    tenantId String
+    tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+    // Basic information
+    name        String
+    description String?          @db.Text
+    code        String // Unique program code
+    category    TrainingCategory
+
+    // Content
+    objectives     String[]
+    prerequisites  String[]
+    targetAudience String?
+
+    // Structure
+    totalHours       Int
+    numberOfSessions Int
+    sessionDuration  Int // in minutes
+
+    // Delivery format
+    deliveryMode    DeliveryMode @default(FACE_TO_FACE)
+    venue           String?
+    virtualPlatform String? // For online/hybrid sessions
+
+    // Capacity and logistics
+    minParticipants Int @default(1)
+    maxParticipants Int @default(20)
+
+    // SSG-WSG Integration
+    ssgApproved    Boolean       @default(false)
+    ssgProgramCode String?
+    wsgEligible    Boolean       @default(false)
+    fundingLevel   FundingLevel?
+
+    // Certification
+    certificateTemplate String?
+    cpPoints            Int? // Continuing Professional Development points
+
+    // Status
+    status   ContentStatus @default(DRAFT)
+    isActive Boolean       @default(true)
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+    createdBy String?
+    updatedBy String?
+
+    // Relations
+    sessions     TrainingSession[]
+    skills       TrainingProgramSkill[]
+    requests     TrainingRequest[]
+    assessments  Assessment[]
+    certificates Certificate[]
+
+    @@unique([tenantId, code])
+    @@index([tenantId])
+    @@index([category])
+    @@index([status])
+    @@index([ssgProgramCode])
+    @@map("training_programs")
+}
+
+model TrainingProgramSkill {
+    id        String          @id @default(cuid())
+    programId String
+    program   TrainingProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+    skillId   String
+    skill     Skill           @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+    targetLevel SkillLevel
+    weight      Int        @default(1)
+
+    @@unique([programId, skillId])
+    @@map("training_program_skills")
+}
+
+model TrainingSession {
+    id        String          @id @default(cuid())
+    programId String
+    program   TrainingProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+    // Session details
+    title         String
+    description   String?
+    sessionNumber Int
+
+    // Scheduling
+    startDate DateTime
+    endDate   DateTime
+    startTime String // HH:MM format
+    endTime   String // HH:MM format
+    timezone  String   @default("Asia/Singapore")
+
+    // Delivery
+    deliveryMode    DeliveryMode
+    venue           String?
+    address         Json? // Structured address
+    virtualLink     String? // Meeting/webinar link
+    virtualPassword String?
+
+    // Instructors
+    instructorId  String
+    instructor    User     @relation("TrainingInstructor", fields: [instructorId], references: [id])
+    coInstructors String[] // Array of user IDs
+
+    // Capacity
+    maxParticipants      Int
+    registrationDeadline DateTime?
+
+    // Status
+    status             SessionStatus @default(SCHEDULED)
+    isCancelled        Boolean       @default(false)
+    cancellationReason String?
+
+    // Materials
+    materials    Json? // Training materials metadata
+    requirements String[] // What participants need to bring
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+
+    // Relations
+    enrollments TrainingEnrollment[]
+    attendance  Attendance[]
+
+    @@index([programId])
+    @@index([startDate])
+    @@index([status])
+    @@index([instructorId])
+    @@map("training_sessions")
+}
+
+model TrainingEnrollment {
+    id        String          @id @default(cuid())
+    sessionId String
+    session   TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    userId    String
+    user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    // Enrollment details
+    status           EnrollmentStatus @default(ENROLLED)
+    registrationDate DateTime         @default(now())
+
+    // Funding
+    fundingApplicationId String?
+    fundingApplication   FundingApplication? @relation(fields: [fundingApplicationId], references: [id])
+
+    // Special requirements
+    dietaryRequirements String?
+    accessibilityNeeds  String?
+    emergencyContact    Json?
+
+    // Completion tracking
+    attendanceRate      Decimal?  @db.Decimal(5, 2) // Percentage
+    completedAt         DateTime?
+    certificateIssuedAt DateTime?
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    version   Int      @default(1)
+
+    @@unique([sessionId, userId])
+    @@index([sessionId])
+    @@index([userId])
+    @@index([status])
+    @@map("training_enrollments")
+}
+
+model Attendance {
+    id        String          @id @default(cuid())
+    sessionId String
+    session   TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    userId    String
+
+    // Attendance details
+    status       AttendanceStatus @default(ABSENT)
+    checkInTime  DateTime?
+    checkOutTime DateTime?
+    notes        String?
+
+    // Tracking method
+    recordedBy      String? // User ID who recorded attendance
+    recordingMethod TrackingMethod @default(MANUAL)
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([sessionId, userId])
+    @@index([sessionId])
+    @@index([userId])
+    @@index([status])
+    @@map("attendance")
+}
+
+model TrainingRequest {
+    id             String           @id @default(cuid())
+    organizationId String
+    organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+    programId      String?
+    program        TrainingProgram? @relation(fields: [programId], references: [id])
+
+    // Request details
+    title       String
+    description String       @db.Text
+    requestType RequestType  @default(STANDARD)
+    urgency     UrgencyLevel @default(MEDIUM)
+
+    // Requirements
+    expectedParticipants Int
+    preferredDates       DateTime[]
+    preferredVenues      String[]
+    budget               Decimal?   @db.Decimal(10, 2)
+    currency             String     @default("SGD")
+
+    // Customization
+    customRequirements String?  @db.Text
+    targetSkills       String[] // Array of skill IDs
+
+    // Status and workflow
+    status          RequestStatus @default(PENDING)
+    approvedBy      String? // User ID
+    approvedAt      DateTime?
+    rejectionReason String?
+
+    // Audit fields
+    requestedBy String // User ID
+    requestedAt DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+    version     Int      @default(1)
+
+    @@index([organizationId])
+    @@index([status])
+    @@index([requestedAt])
+    @@map("training_requests")
+}
+
+// ============================================================================
+// ASSESSMENT SYSTEM
+// ============================================================================
+
+model Assessment {
+    id        String           @id @default(cuid())
+    courseId  String?
+    course    Course?          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+    programId String?
+    program   TrainingProgram? @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+    // Basic information
+    title        String
+    description  String?        @db.Text
+    instructions String?        @db.Text
+    type         AssessmentType @default(QUIZ)
+
+    // Timing
+    duration       Int? // in minutes
+    availableFrom  DateTime?
+    availableUntil DateTime?
+
+    // Attempt settings
+    maxAttempts        Int     @default(1)
+    allowReview        Boolean @default(true)
+    showResults        Boolean @default(true)
+    randomizeQuestions Boolean @default(false)
+
+    // Grading
+    passingScore Int      @default(60)
+    weightage    Decimal? @db.Decimal(5, 2) // Percentage of final grade
+
+    // Certification
+    isCertifying        Boolean @default(false)
+    certificateTemplate String?
+
+    // Status
+    status ContentStatus @default(DRAFT)
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+
+    // Relations
+    questions        Question[]
+    attempts         AssessmentAttempt[]
+    skillAssessments SkillAssessment[]
+    pathwaySteps     LearningPathwayStep[]
+
+    @@index([courseId])
+    @@index([programId])
+    @@index([type])
+    @@index([status])
+    @@map("assessments")
+}
+
+model Question {
+    id           String     @id @default(cuid())
+    assessmentId String
+    assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+    // Question content
+    type        QuestionType @default(MULTIPLE_CHOICE)
+    text        String       @db.Text
+    explanation String?      @db.Text
+
+    // Media
+    imageUrl String?
+    audioUrl String?
+    videoUrl String?
+
+    // Options (for multiple choice/multiple select)
+    options        Json? // Array of option objects
+    correctAnswers Json? // Array of correct answer indices or values
+
+    // Grading
+    points        Int     @default(1)
+    partialCredit Boolean @default(false)
+
+    // Metadata
+    order      Int
+    difficulty DifficultyLevel @default(INTERMEDIATE)
+    tags       String[]
+
+    // Skill association
+    skillId String?
+    skill   Skill?  @relation(fields: [skillId], references: [id])
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+
+    // Relations
+    answers Answer[]
+
+    @@index([assessmentId])
+    @@index([type])
+    @@index([skillId])
+    @@index([order])
+    @@map("questions")
+}
+
+model AssessmentAttempt {
+    id           String     @id @default(cuid())
+    assessmentId String
+    assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+    userId       String
+    user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    // Attempt details
+    attemptNumber Int
+    status        AttemptStatus @default(IN_PROGRESS)
+
+    // Timing
+    startedAt     DateTime  @default(now())
+    submittedAt   DateTime?
+    timeSpent     Int       @default(0) // in seconds
+    remainingTime Int? // in seconds
+
+    // Scoring
+    totalQuestions    Int
+    answeredQuestions Int      @default(0)
+    correctAnswers    Int      @default(0)
+    score             Decimal? @db.Decimal(5, 2) // Percentage
+    passed            Boolean?
+
+    // Metadata
+    ipAddress   String?
+    userAgent   String?
+    browserInfo Json?
+
+    // Proctoring (if enabled)
+    proctored      Boolean @default(false)
+    proctoringData Json?
+
+    // Audit fields
+    version Int @default(1)
+
+    // Relations
+    answers Answer[]
+
+    @@unique([assessmentId, userId, attemptNumber])
+    @@index([assessmentId])
+    @@index([userId])
+    @@index([status])
+    @@index([startedAt])
+    @@map("assessment_attempts")
+}
+
+model Answer {
+    id         String            @id @default(cuid())
+    attemptId  String
+    attempt    AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+    questionId String
+    question   Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+    // Answer content
+    selectedOptions Json? // For multiple choice/select
+    textAnswer      String?  @db.Text // For text/essay questions
+    numericAnswer   Decimal? @db.Decimal(15, 4) // For numeric questions
+    fileAttachments Json? // For file upload questions
+
+    // Grading
+    isCorrect     Boolean?
+    pointsAwarded Decimal? @db.Decimal(5, 2)
+    feedback      String?  @db.Text
+
+    // Timing
+    answeredAt DateTime @default(now())
+    timeSpent  Int      @default(0) // in seconds
+
+    @@unique([attemptId, questionId])
+    @@index([attemptId])
+    @@index([questionId])
+    @@map("answers")
+}
+
+model SkillAssessment {
+    id           String     @id @default(cuid())
+    assessmentId String
+    assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+    skillId      String
+    skill        Skill      @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+    targetLevel  SkillLevel
+    minimumScore Int        @default(60) // Minimum score to achieve target level
+
+    @@unique([assessmentId, skillId])
+    @@map("skill_assessments")
+}
+
+// ============================================================================
+// CERTIFICATION SYSTEM
+// ============================================================================
+
+model Certificate {
+    id        String           @id @default(cuid())
+    courseId  String?
+    course    Course?          @relation(fields: [courseId], references: [id])
+    programId String?
+    program   TrainingProgram? @relation(fields: [programId], references: [id])
+
+    // Certificate details
+    name        String
+    description String?
+    template    String // Template file path or URL
+
+    // Requirements
+    requirements   Json // Completion requirements
+    validityPeriod Int? // in months (null = lifetime)
+
+    // SSG integration
+    ssgRecognized Boolean @default(false)
+    ssgCertCode   String?
+
+    // Status
+    isActive Boolean @default(true)
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+
+    // Relations
+    userCertificates UserCertification[]
+
+    @@index([courseId])
+    @@index([programId])
+    @@index([ssgCertCode])
+    @@map("certificates")
+}
+
+model UserCertification {
+    id            String      @id @default(cuid())
+    userId        String
+    user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+    certificateId String
+    certificate   Certificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+
+    // Certification details
+    certificateNumber String    @unique
+    issueDate         DateTime  @default(now())
+    expiryDate        DateTime?
+
+    // Verification
+    verificationCode String  @unique
+    verificationUrl  String?
+
+    // Status
+    status           CertificationStatus @default(ACTIVE)
+    revokedAt        DateTime?
+    revocationReason String?
+
+    // Digital signature
+    digitalSignature String?
+    signedBy         String? // User ID of authorizing official
+
+    // Metadata
+    metadata Json? // Additional certificate data
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    version   Int      @default(1)
+
+    @@index([userId])
+    @@index([certificateId])
+    @@index([status])
+    @@index([issueDate])
+    @@index([verificationCode])
+    @@map("user_certifications")
+}
+
+// ============================================================================
+// SSG-WSG FUNDING INTEGRATION
+// ============================================================================
+
+model FundingScheme {
+    id       String @id @default(cuid())
+    tenantId String
+    tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+    // Scheme details
+    name        String
+    code        String // Official scheme code (e.g., "SFEC", "ABSS")
+    description String? @db.Text
+    provider    String // e.g., "SSG", "WSG"
+
+    // Eligibility
+    eligibilityCriteria Json
+    targetAudience      String[]
+    ageRequirement      Json? // Min/max age
+
+    // Funding details
+    fundingLevel FundingLevel
+    subsidyRate  Int // Percentage subsidy
+    maxSubsidy   Decimal?     @db.Decimal(10, 2)
+    currency     String       @default("SGD")
+
+    // Validity
+    validFrom DateTime
+    validTo   DateTime?
+
+    // Application process
+    applicationProcess Json
+    requiredDocuments  String[]
+    processingTime     Int? // in days
+
+    // Status
+    isActive Boolean @default(true)
+
+    // Audit fields
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    version   Int       @default(1)
+
+    // Relations
+    applications FundingApplication[]
+
+    @@unique([tenantId, code])
+    @@index([tenantId])
+    @@index([provider])
+    @@index([isActive])
+    @@map("funding_schemes")
+}
+
+model FundingApplication {
+    id             String        @id @default(cuid())
+    schemeId       String
+    scheme         FundingScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+    applicantId    String
+    applicant      User          @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+    organizationId String
+    organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+    // Application details
+    applicationNumber String @unique
+    applicationData   Json // Form data
+
+    // Financial details
+    courseFee     Decimal  @db.Decimal(10, 2)
+    subsidyAmount Decimal? @db.Decimal(10, 2)
+    netPayable    Decimal? @db.Decimal(10, 2)
+    currency      String   @default("SGD")
+
+    // Supporting documents
+    documents Json? // Document metadata
+
+    // Status and workflow
+    status      ApplicationStatus @default(DRAFT)
+    submittedAt DateTime?
+    processedAt DateTime?
+    approvedAt  DateTime?
+    rejectedAt  DateTime?
+
+    // Processing details
+    processedBy       String? // User ID
+    approvalReference String?
+    rejectionReason   String? @db.Text
+
+    // Disbursement
+    disbursedAt           DateTime?
+    disbursementReference String?
+
+    // Audit fields
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    version   Int      @default(1)
+
+    // Relations
+    enrollments         Enrollment[]
+    trainingEnrollments TrainingEnrollment[]
+
+    @@index([schemeId])
+    @@index([applicantId])
+    @@index([organizationId])
+    @@index([status])
+    @@index([submittedAt])
+    @@map("funding_applications")
+}
+
+// ============================================================================
+// AUDIT AND LOGGING SYSTEM
+// ============================================================================
+
+model AuditLog {
+    id       String  @id @default(cuid())
+    tenantId String?
+
+    // Entity information
+    entityType String // Table name
+    entityId   String // Record ID
+
+    // Action details
+    action    AuditAction
+    oldValues Json? // Previous values
+    newValues Json? // New values
+
+    // User context
+    userId    String?
+    user      User?   @relation(fields: [userId], references: [id])
+    ipAddress String?
+    userAgent String?
+
+    // Additional context
+    reason   String?
+    metadata Json?
+
+    // Timestamp
+    timestamp DateTime @default(now())
+
+    @@index([tenantId])
+    @@index([entityType, entityId])
+    @@index([userId])
+    @@index([timestamp])
+    @@index([action])
+    @@map("audit_logs")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum CompanySize {
+    MICRO // 1-10 employees
+    SMALL // 11-50 employees  
+    MEDIUM // 51-200 employees
+    LARGE // 201+ employees
+}
+
+enum Gender {
+    MALE
+    FEMALE
+    NON_BINARY
+    PREFER_NOT_TO_SAY
+}
+
+enum UserRole {
+    SUPER_ADMIN // Platform administrator
+    TENANT_ADMIN // Tenant administrator
+    ORG_ADMIN // Organization administrator
+    MANAGER // Department/team manager
+    INSTRUCTOR // Course/training instructor
+    LEARNER // Student/trainee
+    HR_PERSONNEL // HR staff
+    FINANCE_OFFICER // Finance staff
+    AUDITOR // System auditor
+}
+
+enum UserStatus {
+    ACTIVE
+    INACTIVE
+    SUSPENDED
+    PENDING_VERIFICATION
+    DEACTIVATED
+}
+
+enum SkillCategory {
+    TECHNICAL
+    SOFT_SKILLS
+    LEADERSHIP
+    COMPLIANCE
+    SAFETY
+    DOMAIN_SPECIFIC
+}
+
+enum SkillLevel {
+    AWARENESS // Level 1
+    WORKING // Level 2
+    PRACTITIONER // Level 3
+    ADVANCED // Level 4
+    EXPERT // Level 5
+}
+
+enum EvidenceType {
+    ASSESSMENT
+    CERTIFICATION
+    WORK_EXPERIENCE
+    PORTFOLIO
+    PEER_REVIEW
+    SUPERVISOR_EVALUATION
+}
+
+enum CourseCategory {
+    TECHNICAL_SKILLS
+    SOFT_SKILLS
+    LEADERSHIP
+    COMPLIANCE
+    SAFETY
+    DIGITAL_LITERACY
+    INDUSTRY_SPECIFIC
+    PROFESSIONAL_DEVELOPMENT
+}
+
+enum TrainingCategory {
+    ONBOARDING
+    SKILLS_UPGRADE
+    COMPLIANCE
+    SAFETY
+    LEADERSHIP
+    TEAM_BUILDING
+    PROFESSIONAL_DEVELOPMENT
+    CERTIFICATION
+}
+
+enum DifficultyLevel {
+    BEGINNER
+    INTERMEDIATE
+    ADVANCED
+    EXPERT
+}
+
+enum ContentStatus {
+    DRAFT
+    UNDER_REVIEW
+    APPROVED
+    PUBLISHED
+    ARCHIVED
+    REJECTED
+}
+
+enum LessonType {
+    TEXT
+    VIDEO
+    AUDIO
+    DOCUMENT
+    INTERACTIVE
+    SIMULATION
+    VIRTUAL_REALITY
+    WEBINAR
+}
+
+enum AssignmentType {
+    ESSAY
+    MULTIPLE_CHOICE
+    FILE_UPLOAD
+    PRESENTATION
+    PROJECT
+    PRACTICAL
+    PORTFOLIO
+}
+
+enum EnrollmentStatus {
+    ENROLLED
+    IN_PROGRESS
+    COMPLETED
+    WITHDRAWN
+    FAILED
+    TRANSFERRED
+}
+
+enum SubmissionStatus {
+    DRAFT
+    SUBMITTED
+    UNDER_REVIEW
+    GRADED
+    RETURNED
+    RESUBMITTED
+}
+
+enum ProgressStatus {
+    NOT_STARTED
+    IN_PROGRESS
+    COMPLETED
+    PAUSED
+}
+
+enum DeliveryMode {
+    FACE_TO_FACE
+    VIRTUAL
+    HYBRID
+    SELF_PACED
+    BLENDED
+}
+
+enum FundingLevel {
+    LEVEL_1 // 70% subsidy
+    LEVEL_2 // 90% subsidy
+    LEVEL_3 // 95% subsidy
+    FULL_FUNDING // 100% subsidy
+}
+
+enum SessionStatus {
+    SCHEDULED
+    CONFIRMED
+    IN_PROGRESS
+    COMPLETED
+    CANCELLED
+    POSTPONED
+}
+
+enum AttendanceStatus {
+    PRESENT
+    ABSENT
+    LATE
+    PARTIAL
+    EXCUSED
+}
+
+enum TrackingMethod {
+    MANUAL
+    QR_CODE
+    BIOMETRIC
+    RFID
+    PROXIMITY
+}
+
+enum RequestType {
+    STANDARD
+    URGENT
+    CUSTOM
+    RECURRING
+}
+
+enum UrgencyLevel {
+    LOW
+    MEDIUM
+    HIGH
+    CRITICAL
+}
+
+enum RequestStatus {
+    DRAFT
+    PENDING
+    UNDER_REVIEW
+    APPROVED
+    REJECTED
+    IN_PROGRESS
+    COMPLETED
+    CANCELLED
+}
+
+enum AssessmentType {
+    QUIZ
+    EXAM
+    PRACTICAL
+    PROJECT
+    PRESENTATION
+    PORTFOLIO
+    PEER_REVIEW
+    SELF_ASSESSMENT
+}
+
+enum QuestionType {
+    MULTIPLE_CHOICE
+    MULTIPLE_SELECT
+    TRUE_FALSE
+    SHORT_ANSWER
+    ESSAY
+    NUMERIC
+    FILE_UPLOAD
+    DRAG_DROP
+    MATCHING
+    FILL_IN_BLANKS
+}
+
+enum AttemptStatus {
+    NOT_STARTED
+    IN_PROGRESS
+    SUBMITTED
+    TIMED_OUT
+    CANCELLED
+}
+
+enum CertificationStatus {
+    ACTIVE
+    EXPIRED
+    REVOKED
+    SUSPENDED
+    RENEWED
+}
+
+enum ApplicationStatus {
+    DRAFT
+    SUBMITTED
+    UNDER_REVIEW
+    PENDING_DOCUMENTS
+    APPROVED
+    REJECTED
+    DISBURSED
+    CANCELLED
+}
+
+enum AuditAction {
+    CREATE
+    READ
+    UPDATE
+    DELETE
+    LOGIN
+    LOGOUT
+    EXPORT
+    IMPORT
+    APPROVE
+    REJECT
+    ACTIVATE
+    DEACTIVATE
+}
+
+// Security and encryption enums
+enum PolicyType {
+    ALLOW
+    DENY
+    CONDITIONAL
+}
+
+enum DataClassificationType {
+    PUBLIC
+    INTERNAL
+    CONFIDENTIAL
+    RESTRICTED
+    TOP_SECRET
+}
+
+enum EncryptionType {
+    AES_256_GCM
+    AES_256_CBC
+    RSA_2048
+    RSA_4096
+    BCRYPT
+    SCRYPT
+    PBKDF2
+}
+
+// Validation and constraint enums
+enum ValidationType {
+    FIELD_VALIDATION
+    CROSS_FIELD_VALIDATION
+    BUSINESS_RULE
+    REFERENTIAL_INTEGRITY
+    TEMPORAL_CONSTRAINT
+    NUMERIC_RANGE
+    STRING_FORMAT
+    CUSTOM_LOGIC
+}
+
+enum SeverityLevel {
+    INFO
+    WARNING
+    ERROR
+    CRITICAL
+}
+
+// Relationship and competency enums
+enum PrerequisiteType {
+    COMPLETION
+    MINIMUM_GRADE
+    MINIMUM_SCORE
+    ASSESSMENT_PASS
+    CERTIFICATION
+    TIME_BASED
+}
+
+enum CompetencyRelationType {
+    PREREQUISITE
+    COMPLEMENTARY
+    ALTERNATIVE
+    ADVANCED_VERSION
+    FOUNDATIONAL
+    SPECIALIZATION
+}
+
+enum RelationshipStrength {
+    WEAK
+    MEDIUM
+    STRONG
+    CRITICAL
+}
+
+// Learning pathway enums
+enum PathwayCategory {
+    SKILL_BASED
+    ROLE_BASED
+    CERTIFICATION_TRACK
+    COMPLIANCE_TRACK
+    CAREER_DEVELOPMENT
+    ONBOARDING
+    CUSTOM
+}
+
+enum PathwayStepType {
+    COURSE
+    ASSESSMENT
+    SKILL_VALIDATION
+    PRACTICAL_EXERCISE
+    MENTORING_SESSION
+    READING_MATERIAL
+    VIDEO_CONTENT
+    WORKSHOP
+    CERTIFICATION_EXAM
+    PORTFOLIO_SUBMISSION
+}
+
+// Authentication & Security Enums
+enum SessionType {
+    WEB
+    MOBILE
+    API
+    DESKTOP
+    KIOSK
+    TABLET
+}
+
+enum SecurityEventType {
+    LOGIN_SUCCESS
+    LOGIN_FAILURE
+    LOGOUT
+    PASSWORD_CHANGE
+    PASSWORD_RESET
+    MFA_SETUP
+    MFA_VERIFICATION
+    MFA_FAILURE
+    ACCOUNT_LOCKED
+    ACCOUNT_UNLOCKED
+    SUSPICIOUS_ACTIVITY
+    DATA_ACCESS
+    PERMISSION_CHANGE
+    SESSION_HIJACK
+    BRUTE_FORCE
+    PRIVILEGE_ESCALATION
+    DATA_EXPORT
+    POLICY_VIOLATION
+}
+
+enum SecuritySeverity {
+    LOW
+    MEDIUM
+    HIGH
+    CRITICAL
+}
+
+enum EventStatus {
+    OPEN
+    INVESTIGATING
+    RESOLVED
+    FALSE_POSITIVE
+    ACKNOWLEDGED
+}
+
+enum MFAType {
+    TOTP
+    SMS
+    EMAIL
+    HARDWARE_TOKEN
+    BIOMETRIC
+    BACKUP_CODES
+    PUSH_NOTIFICATION
+}
+
+enum AuthType {
+    LOGIN
+    REGISTRATION
+    PASSWORD_RESET
+    EMAIL_VERIFICATION
+    MFA_CHALLENGE
+    SSO_CALLBACK
+    TOKEN_REFRESH
+    LOGOUT
+}
+
+enum AuthMethod {
+    EMAIL_PASSWORD
+    GOOGLE_OAUTH
+    MICROSOFT_OAUTH
+    SAML_SSO
+    LDAP
+    API_KEY
+    MAGIC_LINK
+    BIOMETRIC
+    CERTIFICATE
+}

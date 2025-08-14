@@ -1,0 +1,79 @@
+{
+  "name": "@tmslms/user-profile",
+  "version": "1.0.0",
+  "description": "Comprehensive user profile management system with skills tracking, social features, privacy compliance, and enterprise integrations",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint lib/**/*.ts",
+    "lint:fix": "eslint lib/**/*.ts --fix",
+    "format": "prettier --write lib/**/*.ts",
+    "docs": "typedoc lib/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "user-profile",
+    "skills-tracking",
+    "ssg-framework",
+    "privacy-compliance",
+    "pdpa",
+    "gdpr",
+    "hr-integration",
+    "social-learning",
+    "competency-management",
+    "enterprise",
+    "typescript"
+  ],
+  "author": "TMSLMS Team",
+  "license": "MIT",
+  "dependencies": {
+    "date-fns": "^3.0.0",
+    "lodash": "^4.17.21",
+    "validator": "^13.11.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/lodash": "^4.14.200",
+    "@types/node": "^20.0.0",
+    "@types/validator": "^13.11.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.50.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.0.0",
+    "ts-jest": "^29.1.0",
+    "typedoc": "^0.25.0",
+    "typescript": "^5.2.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/tmslms.git",
+    "directory": "packages/user-profile"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/tmslms/issues"
+  },
+  "homepage": "https://github.com/your-org/tmslms/tree/main/packages/user-profile#readme",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

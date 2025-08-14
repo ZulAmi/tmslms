@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: tmslms-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tmslms
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - tmslms-network
+
+  # Redis for caching and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: tmslms-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - tmslms-network
+
+  # LMS Application
+  lms:
+    build:
+      context: .
+      dockerfile: ./apps/lms/Dockerfile
+    container_name: tmslms-lms
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/tmslms
+      - NEXTAUTH_URL=http://localhost:3001
+      - NEXTAUTH_SECRET=your-secret-key-here-change-in-production
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "3001:3000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - tmslms-network
+    volumes:
+      - ./apps/lms:/app
+      - /app/node_modules
+
+  # TMS Application
+  tms:
+    build:
+      context: .
+      dockerfile: ./apps/tms/Dockerfile
+    container_name: tmslms-tms
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/tmslms
+      - NEXTAUTH_URL=http://localhost:3002
+      - NEXTAUTH_SECRET=your-secret-key-here-change-in-production
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "3002:3000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - tmslms-network
+
+  # Admin Application
+  admin:
+    build:
+      context: .
+      dockerfile: ./apps/admin/Dockerfile
+    container_name: tmslms-admin
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/tmslms
+      - NEXTAUTH_URL=http://localhost:3003
+      - NEXTAUTH_SECRET=your-secret-key-here-change-in-production
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "3003:3000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - tmslms-network
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: tmslms-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - lms
+      - tms
+      - admin
+    networks:
+      - tmslms-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  tmslms-network:
+    driver: bridge
