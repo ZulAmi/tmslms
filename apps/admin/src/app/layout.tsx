@@ -1,22 +1,18 @@
-import "../styles/globals.css";
+import '../styles/globals.css';
 
-import React from "react";
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import { Providers } from "@/components/providers";
+import React from 'react';
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import { Providers } from '@/components/providers';
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "Admin - System Administration",
-  description: "System Administration Dashboard",
+  title: 'Admin - System Administration',
+  description: 'System Administration Dashboard',
 };
 
-export default function RootLayout({ 
-  children 
-}: { 
-  children: React.ReactNode 
-}) {
+export default function RootLayout({ children }: { children: any }) {
   return (
     <html lang="en">
       <body className={inter.className}>

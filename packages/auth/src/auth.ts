@@ -1,20 +1,20 @@
-import NextAuth, { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
-import { JWT } from "next-auth/jwt";
-import { Session } from "next-auth";
+import NextAuth, { NextAuthOptions } from 'next-auth';
+import CredentialsProvider from 'next-auth/providers/credentials';
+import bcrypt from 'bcryptjs';
+import { JWT } from 'next-auth/jwt';
+import { Session } from 'next-auth';
 
 // Extend NextAuth types
-declare module "next-auth" {
+declare module 'next-auth' {
   interface Session {
     user: {
       id: string;
       email: string;
       name: string;
       role: string;
-    }
+    };
   }
-  
+
   interface User {
     id: string;
     email: string;
@@ -23,7 +23,7 @@ declare module "next-auth" {
   }
 }
 
-declare module "next-auth/jwt" {
+declare module 'next-auth/jwt' {
   interface JWT {
     role?: string;
   }
@@ -33,35 +33,35 @@ declare module "next-auth/jwt" {
 // In a real app, this would connect to your database
 const users = [
   {
-    id: "1",
-    email: "admin@example.com",
-    password: "$2a$10$rjqT1rZqz.jJRk9ynLJQKO8wF.b8q1dZVXQZjLzJ8HtQqwD1cPZti", // "password"
-    name: "Admin User",
-    role: "ADMIN",
+    id: '1',
+    email: 'admin@example.com',
+    password: '$2a$10$rjqT1rZqz.jJRk9ynLJQKO8wF.b8q1dZVXQZjLzJ8HtQqwD1cPZti', // "password"
+    name: 'Admin User',
+    role: 'ADMIN',
   },
 ];
 
-const authConfig: NextAuthOptions = {
+export const authConfig: NextAuthOptions = {
   session: {
-    strategy: "jwt",
+    strategy: 'jwt',
   },
   pages: {
-    signIn: "/auth/signin",
-    error: "/auth/error",
+    signIn: '/auth/signin',
+    error: '/auth/error',
   },
   providers: [
     CredentialsProvider({
-      name: "credentials",
+      name: 'credentials',
       credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
 
-        const user = users.find(u => u.email === credentials.email);
+        const user = users.find((u) => u.email === credentials.email);
 
         if (!user) {
           return null;
@@ -102,4 +102,15 @@ const authConfig: NextAuthOptions = {
   },
 };
 
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+// Create the default export for NextAuth v4
+const nextAuthHandler = NextAuth(authConfig);
+
+export default nextAuthHandler;
+
+// Export for convenience
+export const auth = nextAuthHandler;
+export const signIn = nextAuthHandler;
+export const signOut = nextAuthHandler;
+
+// Export handlers for App Router
+export const handlers = nextAuthHandler;

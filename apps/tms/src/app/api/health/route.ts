@@ -1,0 +1,34 @@
+import { NextResponse } from 'next/server';
+
+export async function GET() {
+  try {
+    // Import dynamically to avoid module resolution issues during build
+    const integrationModule = await import('../../../lib/ssg-wsg-integration');
+    const health = await integrationModule.default.checkSSGWSGHealth();
+
+    const response = {
+      app: 'tms',
+      timestamp: new Date().toISOString(),
+      status: health.healthy ? 'healthy' : 'unhealthy',
+      ssgwsg: health.details || { error: health.error },
+      version: process.env.npm_package_version || '1.0.0',
+    };
+
+    return NextResponse.json(response, {
+      status: health.healthy ? 200 : 503,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        app: 'tms',
+        timestamp: new Date().toISOString(),
+        status: 'unhealthy',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'SSG-WSG integration not available',
+      },
+      { status: 503 }
+    );
+  }
+}

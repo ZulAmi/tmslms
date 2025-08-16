@@ -1,0 +1,48 @@
+{
+  "name": "@tmslms/participant-management",
+  "version": "1.0.0",
+  "description": "Comprehensive participant lifecycle management for TMS",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint .",
+    "clean": "rm -rf dist",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@tmslms/auth": "1.0.0",
+    "@tmslms/database": "1.0.0",
+    "@tmslms/shared": "1.0.0",
+    "date-fns": "^2.30.0",
+    "lodash": "^4.17.21",
+    "uuid": "^9.0.0",
+    "zod": "^3.22.4",
+    "qrcode": "^1.5.3",
+    "nodemailer": "^6.9.7",
+    "twilio": "^4.19.0",
+    "pdf-lib": "^1.17.1",
+    "chart.js": "^4.4.0",
+    "chartjs-adapter-date-fns": "^3.0.0",
+    "sharp": "^0.32.6",
+    "file-type": "^18.7.0"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.14.202",
+    "@types/uuid": "^9.0.7",
+    "@types/qrcode": "^1.5.5",
+    "@types/nodemailer": "^6.4.14",
+    "@types/sharp": "^0.32.0",
+    "@tmslms/eslint-config": "1.0.0",
+    "@tmslms/typescript-config": "1.0.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.8"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  }
+}

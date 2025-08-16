@@ -11,7 +11,9 @@
     "build": "tsup"
   },
   "dependencies": {
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "@tmslms/ssg-wsg-integration": "*",
+    "ioredis": "^5.4.1"
   },
   "devDependencies": {
     "eslint": "^8.55.0",
@@ -22,6 +24,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./ssg-wsg-integration": {
+      "types": "./dist/ssg-wsg-integration.d.ts",
+      "default": "./dist/ssg-wsg-integration.js"
     }
   }
 }

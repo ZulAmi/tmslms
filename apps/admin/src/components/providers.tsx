@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import React from "react";
+import React from 'react';
 
 interface ProvidersProps {
-  children: React.ReactNode;
+  children: any;
 }
 
 export function Providers({ children }: ProvidersProps) {
