@@ -138,20 +138,13 @@ export default function ProfessionalTMSDashboard() {
 
   const loadSessions = async (): Promise<Session[]> => {
     try {
-      const sessions = await schedulingService.getSessions();
-      return sessions.map((session) => ({
-        id: session.id,
-        title: session.title,
-        date: new Date(session.startTime).toLocaleDateString(),
-        time: new Date(session.startTime).toLocaleTimeString(),
-        duration: session.duration || '2 hours',
-        participants: session.registeredParticipants?.length || 0,
-        maxParticipants: session.maxParticipants || 25,
-        status: session.status as any,
-        location: session.location || 'Online',
-        instructor: session.instructor || 'TMS Instructor',
-        category: session.category || 'Training',
-      }));
+      // Use API call instead of direct service call
+      const response = await fetch('/api/sessions');
+      if (response.ok) {
+        const data = await response.json();
+        return data.sessions || [];
+      }
+      return generateDemoSessions();
     } catch (error) {
       return generateDemoSessions();
     }
@@ -159,20 +152,13 @@ export default function ProfessionalTMSDashboard() {
 
   const loadParticipants = async (): Promise<Participant[]> => {
     try {
-      const participants = await participantService.getAllParticipants();
-      return participants.map((participant) => ({
-        id: participant.id,
-        name: participant.name,
-        email: participant.email,
-        phone: participant.contactInfo?.phone || 'Not provided',
-        department: participant.metadata?.department || 'General',
-        status: participant.status as any,
-        registrationDate: new Date(
-          participant.registrationDate
-        ).toLocaleDateString(),
-        lastActivity: new Date().toLocaleDateString(),
-        completedSessions: participant.completedSessions || 0,
-      }));
+      // Use API call instead of direct service call
+      const response = await fetch('/api/participants');
+      if (response.ok) {
+        const data = await response.json();
+        return data.participants || [];
+      }
+      return generateDemoParticipants();
     } catch (error) {
       return generateDemoParticipants();
     }
