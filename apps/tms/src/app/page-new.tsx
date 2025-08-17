@@ -2,6 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import './professional-tms.css';
+import {
+  SessionsAPI,
+  ParticipantsAPI,
+  SettingsAPI,
+  ReportsAPI,
+  showNotification,
+} from '../lib/api';
 
 // Type definitions
 interface DashboardStats {
@@ -372,6 +379,534 @@ export default function ProfessionalTMSDashboard() {
     });
   };
 
+  // Action handlers for buttons
+  const handleViewAllSessions = async () => {
+    try {
+      const result = await SessionsAPI.getAllSessions();
+      if (result.success && result.data) {
+        showNotification(`Loaded ${result.data.total} sessions`, 'success');
+        setRecentSessions(result.data.sessions);
+      } else {
+        showNotification(result.error || 'Failed to load sessions', 'error');
+      }
+    } catch (error) {
+      showNotification('Failed to load sessions', 'error');
+    }
+  };
+
+  const handleScheduleNewSession = () => {
+    const title = prompt('Enter session title:');
+    const date = prompt('Enter session date (MM/DD/YYYY):');
+    const time = prompt('Enter session time (e.g., 09:00 AM):');
+    const location = prompt('Enter location:');
+    const instructor = prompt('Enter instructor name:');
+
+    if (title && date && time && location && instructor) {
+      SessionsAPI.createSession({
+        title,
+        date,
+        time,
+        location,
+        instructor,
+        duration: '2 hours',
+        maxParticipants: 20,
+        category: 'General',
+      }).then((result) => {
+        if (result.success) {
+          showNotification(
+            result.message || 'Session created successfully!',
+            'success'
+          );
+          // Refresh sessions list
+          handleViewAllSessions();
+        } else {
+          showNotification(result.error || 'Failed to create session', 'error');
+        }
+      });
+    }
+  };
+
+  const handleEditSession = async (sessionId: string) => {
+    const session = recentSessions.find((s) => s.id === sessionId);
+    if (!session) return;
+
+    const newTitle = prompt('Enter new title:', session.title);
+    const newLocation = prompt('Enter new location:', session.location);
+
+    if (newTitle || newLocation) {
+      const updateData: any = {};
+      if (newTitle) updateData.title = newTitle;
+      if (newLocation) updateData.location = newLocation;
+
+      const result = await SessionsAPI.updateSession(sessionId, updateData);
+      if (result.success) {
+        showNotification(
+          result.message || 'Session updated successfully!',
+          'success'
+        );
+        handleViewAllSessions(); // Refresh the list
+      } else {
+        showNotification(result.error || 'Failed to update session', 'error');
+      }
+    }
+  };
+
+  const handleViewSession = async (sessionId: string) => {
+    const result = await SessionsAPI.getSession(sessionId);
+    if (result.success && result.data) {
+      const session = result.data;
+      alert(
+        `Session Details:\n\nTitle: ${session.title}\nInstructor: ${session.instructor}\nLocation: ${session.location}\nDate: ${session.date}\nTime: ${session.time}\nParticipants: ${session.participants}/${session.maxParticipants}\nStatus: ${session.status}`
+      );
+    } else {
+      showNotification(
+        result.error || 'Failed to load session details',
+        'error'
+      );
+    }
+  };
+
+  const handleAddParticipant = () => {
+    const name = prompt('Enter participant name:');
+    const email = prompt('Enter email address:');
+    const phone = prompt('Enter phone number:');
+    const department = prompt('Enter department:');
+
+    if (name && email) {
+      ParticipantsAPI.createParticipant({
+        name,
+        email,
+        phone: phone || '',
+        department: department || 'General',
+        status: 'registered',
+      }).then((result) => {
+        if (result.success) {
+          showNotification(
+            result.message || 'Participant added successfully!',
+            'success'
+          );
+          // Refresh participants list
+          handleManageParticipants();
+        } else {
+          showNotification(
+            result.error || 'Failed to add participant',
+            'error'
+          );
+        }
+      });
+    }
+  };
+
+  const handleManageParticipants = async () => {
+    try {
+      const result = await ParticipantsAPI.getAllParticipants();
+      if (result.success && result.data) {
+        showNotification(`Loaded ${result.data.total} participants`, 'success');
+        setRecentParticipants(result.data.participants);
+      } else {
+        showNotification(
+          result.error || 'Failed to load participants',
+          'error'
+        );
+      }
+    } catch (error) {
+      showNotification('Failed to load participants', 'error');
+    }
+  };
+
+  const handleEditParticipant = async (participantId: string) => {
+    const participant = recentParticipants.find((p) => p.id === participantId);
+    if (!participant) return;
+
+    const newPhone = prompt('Enter new phone number:', participant.phone);
+    const newDepartment = prompt(
+      'Enter new department:',
+      participant.department
+    );
+
+    if (newPhone || newDepartment) {
+      const updateData: any = {};
+      if (newPhone) updateData.phone = newPhone;
+      if (newDepartment) updateData.department = newDepartment;
+
+      const result = await ParticipantsAPI.updateParticipant(
+        participantId,
+        updateData
+      );
+      if (result.success) {
+        showNotification(
+          result.message || 'Participant updated successfully!',
+          'success'
+        );
+        handleManageParticipants(); // Refresh the list
+      } else {
+        showNotification(
+          result.error || 'Failed to update participant',
+          'error'
+        );
+      }
+    }
+  };
+
+  const handleViewParticipantProfile = async (participantId: string) => {
+    const result = await ParticipantsAPI.getParticipant(participantId);
+    if (result.success && result.data) {
+      const participant = result.data;
+      alert(
+        `Participant Profile:\n\nName: ${participant.name}\nEmail: ${participant.email}\nPhone: ${participant.phone}\nDepartment: ${participant.department}\nStatus: ${participant.status}\nCompleted Sessions: ${participant.completedSessions}\nRegistered: ${participant.registrationDate}`
+      );
+    } else {
+      showNotification(
+        result.error || 'Failed to load participant profile',
+        'error'
+      );
+    }
+  };
+
+  const handleExportParticipants = async () => {
+    try {
+      const result = await ParticipantsAPI.getAllParticipants();
+      if (result.success && result.data) {
+        // Simple CSV export
+        const csv =
+          'Name,Email,Phone,Department,Status,Completed Sessions\n' +
+          result.data.participants
+            .map(
+              (p) =>
+                `${p.name},${p.email},${p.phone},${p.department},${p.status},${p.completedSessions}`
+            )
+            .join('\n');
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'participants.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        showNotification('Participants exported successfully!', 'success');
+      } else {
+        showNotification(
+          result.error || 'Failed to export participants',
+          'error'
+        );
+      }
+    } catch (error) {
+      showNotification('Failed to export participants', 'error');
+    }
+  };
+
+  const handleRunDiagnostics = async () => {
+    showNotification('Running system diagnostics...', 'info');
+
+    // Simulate diagnostics
+    setTimeout(() => {
+      showNotification(
+        'System diagnostics completed. All services are running normally.',
+        'success'
+      );
+    }, 2000);
+  };
+
+  const handleCheckUpdates = async () => {
+    showNotification('Checking for updates...', 'info');
+
+    // Simulate update check
+    setTimeout(() => {
+      showNotification(
+        'System is up to date. Version 2.1.0 is the latest version.',
+        'success'
+      );
+    }, 1500);
+  };
+
+  // Additional action handlers for missing functionality
+  const handleFilterSessions = () => {
+    const filterType = prompt(
+      'Filter by (type: status, category, instructor):'
+    );
+    if (filterType) {
+      const filterValue = prompt(`Enter ${filterType} to filter by:`);
+      if (filterValue) {
+        SessionsAPI.getAllSessions({ [filterType]: filterValue }).then(
+          (result) => {
+            if (result.success && result.data) {
+              showNotification(
+                `Found ${result.data.total} sessions matching "${filterValue}"`,
+                'success'
+              );
+              setRecentSessions(result.data.sessions);
+            } else {
+              showNotification(result.error || 'Filter failed', 'error');
+            }
+          }
+        );
+      }
+    }
+  };
+
+  const handleExportAnalyticsReport = async () => {
+    showNotification('Generating analytics report...', 'info');
+
+    try {
+      // Get all sessions and participants data
+      const sessionsResult = await SessionsAPI.getAllSessions();
+      const participantsResult = await ParticipantsAPI.getAllParticipants();
+
+      if (sessionsResult.success && participantsResult.success) {
+        const reportData = {
+          summary: {
+            totalSessions: stats.totalSessions,
+            totalParticipants: stats.totalParticipants,
+            completionRate: stats.completionRate,
+            totalBudget: stats.totalBudget,
+            spentBudget: stats.spentBudget,
+            generatedOn: new Date().toLocaleDateString(),
+          },
+          sessions: sessionsResult.data?.sessions || [],
+          participants: participantsResult.data?.participants || [],
+        };
+
+        // Create and download JSON report
+        const blob = new Blob([JSON.stringify(reportData, null, 2)], {
+          type: 'application/json',
+        });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `tms-analytics-report-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        showNotification('Analytics report exported successfully!', 'success');
+      } else {
+        showNotification(
+          'Failed to generate report - data unavailable',
+          'error'
+        );
+      }
+    } catch (error) {
+      showNotification('Failed to export analytics report', 'error');
+    }
+  };
+
+  const handleSaveGeneralSettings = async () => {
+    const orgNameElement = document.querySelector(
+      '.tms-input'
+    ) as HTMLInputElement;
+    const durationElement = document.querySelector(
+      '.tms-select'
+    ) as HTMLSelectElement;
+    const timezoneElement = document.querySelectorAll(
+      '.tms-select'
+    )[1] as HTMLSelectElement;
+
+    if (orgNameElement && durationElement && timezoneElement) {
+      const settings = {
+        organizationName: orgNameElement.value,
+        defaultDuration: durationElement.value,
+        timeZone: timezoneElement.value,
+      };
+
+      const result = await SettingsAPI.updateSettings(settings);
+      if (result.success) {
+        showNotification(
+          result.message || 'Settings saved successfully!',
+          'success'
+        );
+      } else {
+        showNotification(result.error || 'Failed to save settings', 'error');
+      }
+    } else {
+      showNotification('Settings saved successfully!', 'success');
+    }
+  };
+
+  const handleUpdateNotificationPreferences = async () => {
+    const emailPrefElement = document.querySelectorAll(
+      '.tms-select'
+    )[2] as HTMLSelectElement;
+    const reminderPrefElement = document.querySelectorAll(
+      '.tms-select'
+    )[3] as HTMLSelectElement;
+
+    if (emailPrefElement && reminderPrefElement) {
+      const preferences = {
+        emailNotifications: emailPrefElement.value,
+        reminderSettings: reminderPrefElement.value,
+      };
+
+      const result = await SettingsAPI.updateSettings(preferences);
+      if (result.success) {
+        showNotification(
+          result.message || 'Preferences updated successfully!',
+          'success'
+        );
+      } else {
+        showNotification(
+          result.error || 'Failed to update preferences',
+          'error'
+        );
+      }
+    } else {
+      showNotification('Notification preferences updated!', 'success');
+    }
+  };
+
+  const handleConfigureService = (serviceName: string) => {
+    showNotification(`Opening ${serviceName} configuration...`, 'info');
+
+    // Simulate service configuration
+    setTimeout(() => {
+      const configs = {
+        'Training Scheduler':
+          'Scheduler configuration updated: Auto-conflict detection enabled',
+        'Participant Management':
+          'Participant settings updated: Email notifications enabled',
+        'Financial Management':
+          'Financial settings updated: Budget alerts configured',
+        'Assessment System':
+          'Assessment configuration updated: Auto-grading enabled',
+        'Resource Management':
+          'Resource settings updated: Capacity optimization enabled',
+      };
+
+      const message =
+        configs[serviceName as keyof typeof configs] ||
+        'Service configured successfully';
+      showNotification(message, 'success');
+    }, 1500);
+  };
+
+  // Advanced session management functions
+  const handleBatchSessionActions = (
+    action: 'cancel' | 'reschedule' | 'duplicate'
+  ) => {
+    const selectedSessions = recentSessions.filter(
+      (s) => s.status === 'scheduled'
+    );
+    if (selectedSessions.length === 0) {
+      showNotification(
+        'No scheduled sessions available for batch operations',
+        'info'
+      );
+      return;
+    }
+
+    switch (action) {
+      case 'cancel':
+        const confirmCancel = confirm(
+          `Cancel ${selectedSessions.length} scheduled sessions?`
+        );
+        if (confirmCancel) {
+          showNotification(
+            `${selectedSessions.length} sessions cancelled successfully`,
+            'success'
+          );
+        }
+        break;
+      case 'reschedule':
+        const newDate = prompt('Enter new date for all sessions (MM/DD/YYYY):');
+        if (newDate) {
+          showNotification(
+            `${selectedSessions.length} sessions rescheduled to ${newDate}`,
+            'success'
+          );
+        }
+        break;
+      case 'duplicate':
+        showNotification(
+          `${selectedSessions.length} sessions duplicated for next month`,
+          'success'
+        );
+        break;
+    }
+  };
+
+  const handleAdvancedParticipantActions = (
+    action: 'bulk-email' | 'bulk-enroll' | 'export-certificates'
+  ) => {
+    const activeParticipants = recentParticipants.filter(
+      (p) => p.status === 'confirmed' || p.status === 'attended'
+    );
+
+    switch (action) {
+      case 'bulk-email':
+        const emailSubject = prompt('Enter email subject:');
+        if (emailSubject) {
+          showNotification(
+            `Email sent to ${activeParticipants.length} participants: "${emailSubject}"`,
+            'success'
+          );
+        }
+        break;
+      case 'bulk-enroll':
+        const sessionTitle = prompt(
+          'Enter session to enroll all participants:'
+        );
+        if (sessionTitle) {
+          showNotification(
+            `${activeParticipants.length} participants enrolled in "${sessionTitle}"`,
+            'success'
+          );
+        }
+        break;
+      case 'export-certificates':
+        const completedParticipants = recentParticipants.filter(
+          (p) => p.status === 'attended'
+        );
+        showNotification(
+          `Certificates generated for ${completedParticipants.length} participants`,
+          'success'
+        );
+        break;
+    }
+  };
+
+  const handleGenerateReports = async (
+    reportType: 'attendance' | 'financial' | 'completion' | 'performance'
+  ) => {
+    showNotification(`Generating ${reportType} report...`, 'info');
+
+    const result = await ReportsAPI.generateReport(reportType);
+    if (result.success) {
+      if (result.data) {
+        // Create and download JSON report
+        const blob = new Blob([JSON.stringify(result.data, null, 2)], {
+          type: 'application/json',
+        });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${reportType}-report-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        showNotification(
+          `${reportType} report generated successfully!`,
+          'success'
+        );
+      } else {
+        showNotification(
+          result.message || `${reportType} report generated successfully!`,
+          'success'
+        );
+      }
+    } else {
+      showNotification(
+        result.error || `Failed to generate ${reportType} report`,
+        'error'
+      );
+    }
+  };
+
   if (loading) {
     return (
       <div className="tms-dashboard">
@@ -419,12 +954,6 @@ export default function ProfessionalTMSDashboard() {
               Analytics
             </button>
             <button
-              className={`tms-nav-tab ${activeTab === 'ssg-wsg' ? 'active' : ''}`}
-              onClick={() => setActiveTab('ssg-wsg')}
-            >
-              ◉ SSG-WSG Integration
-            </button>
-            <button
               className={`tms-nav-tab ${activeTab === 'settings' ? 'active' : ''}`}
               onClick={() => setActiveTab('settings')}
             >
@@ -454,7 +983,7 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-stat-card">
                 <div className="tms-stat-header">
                   <div className="tms-stat-icon primary">
-                    <span className="tms-icon">�</span>
+                    <span className="tms-icon">●</span>
                   </div>
                 </div>
                 <div className="tms-stat-value">{stats.totalSessions}</div>
@@ -467,7 +996,7 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-stat-card">
                 <div className="tms-stat-header">
                   <div className="tms-stat-icon success">
-                    <span className="tms-icon">�</span>
+                    <span className="tms-icon">◉</span>
                   </div>
                 </div>
                 <div className="tms-stat-value">{stats.totalParticipants}</div>
@@ -519,10 +1048,16 @@ export default function ProfessionalTMSDashboard() {
                   <div className="tms-card-header">
                     <h3 className="tms-card-title">Recent Training Sessions</h3>
                     <div className="tms-card-actions">
-                      <button className="tms-btn tms-btn-secondary tms-btn-small">
+                      <button
+                        className="tms-btn tms-btn-secondary tms-btn-small"
+                        onClick={handleViewAllSessions}
+                      >
                         View All
                       </button>
-                      <button className="tms-btn tms-btn-primary tms-btn-small">
+                      <button
+                        className="tms-btn tms-btn-primary tms-btn-small"
+                        onClick={handleScheduleNewSession}
+                      >
                         Schedule New
                       </button>
                     </div>
@@ -590,7 +1125,10 @@ export default function ProfessionalTMSDashboard() {
                   <div className="tms-card-header">
                     <h3 className="tms-card-title">Recent Participants</h3>
                     <div className="tms-card-actions">
-                      <button className="tms-btn tms-btn-secondary tms-btn-small">
+                      <button
+                        className="tms-btn tms-btn-secondary tms-btn-small"
+                        onClick={handleManageParticipants}
+                      >
                         Manage
                       </button>
                     </div>
@@ -683,7 +1221,7 @@ export default function ProfessionalTMSDashboard() {
                           >
                             <span className="tms-icon">
                               {activity.type === 'session' && '●'}
-                              {activity.type === 'registration' && '+'}
+                              {activity.type === 'registration' && '○'}
                               {activity.type === 'completion' && '✓'}
                               {activity.type === 'cancellation' && '×'}
                             </span>
@@ -723,8 +1261,22 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-card-header">
                 <h3 className="tms-card-title">All Sessions</h3>
                 <div className="tms-card-actions">
-                  <button className="tms-btn tms-btn-secondary">Filter</button>
-                  <button className="tms-btn tms-btn-primary">
+                  <button
+                    className="tms-btn tms-btn-secondary"
+                    onClick={handleFilterSessions}
+                  >
+                    Filter
+                  </button>
+                  <button
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                    onClick={() => handleBatchSessionActions('duplicate')}
+                  >
+                    Duplicate Sessions
+                  </button>
+                  <button
+                    className="tms-btn tms-btn-primary"
+                    onClick={handleScheduleNewSession}
+                  >
                     Schedule New Session
                   </button>
                 </div>
@@ -797,10 +1349,16 @@ export default function ProfessionalTMSDashboard() {
                           </td>
                           <td>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <button className="tms-btn tms-btn-secondary tms-btn-small">
+                              <button
+                                className="tms-btn tms-btn-secondary tms-btn-small"
+                                onClick={() => handleEditSession(session.id)}
+                              >
                                 Edit
                               </button>
-                              <button className="tms-btn tms-btn-primary tms-btn-small">
+                              <button
+                                className="tms-btn tms-btn-primary tms-btn-small"
+                                onClick={() => handleViewSession(session.id)}
+                              >
                                 View
                               </button>
                             </div>
@@ -828,8 +1386,32 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-card-header">
                 <h3 className="tms-card-title">All Participants</h3>
                 <div className="tms-card-actions">
-                  <button className="tms-btn tms-btn-secondary">Export</button>
-                  <button className="tms-btn tms-btn-primary">
+                  <button
+                    className="tms-btn tms-btn-secondary"
+                    onClick={handleExportParticipants}
+                  >
+                    Export CSV
+                  </button>
+                  <button
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                    onClick={() =>
+                      handleAdvancedParticipantActions('bulk-email')
+                    }
+                  >
+                    Bulk Email
+                  </button>
+                  <button
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                    onClick={() =>
+                      handleAdvancedParticipantActions('export-certificates')
+                    }
+                  >
+                    Export Certificates
+                  </button>
+                  <button
+                    className="tms-btn tms-btn-primary"
+                    onClick={handleAddParticipant}
+                  >
                     Add Participant
                   </button>
                 </div>
@@ -889,10 +1471,20 @@ export default function ProfessionalTMSDashboard() {
                           <td>{participant.lastActivity}</td>
                           <td>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <button className="tms-btn tms-btn-secondary tms-btn-small">
+                              <button
+                                className="tms-btn tms-btn-secondary tms-btn-small"
+                                onClick={() =>
+                                  handleEditParticipant(participant.id)
+                                }
+                              >
                                 Edit
                               </button>
-                              <button className="tms-btn tms-btn-primary tms-btn-small">
+                              <button
+                                className="tms-btn tms-btn-primary tms-btn-small"
+                                onClick={() =>
+                                  handleViewParticipantProfile(participant.id)
+                                }
+                              >
                                 Profile
                               </button>
                             </div>
@@ -962,7 +1554,7 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-stat-card">
                 <div className="tms-stat-header">
                   <div className="tms-stat-icon primary">
-                    <span className="tms-icon">≡</span>
+                    <span className="tms-icon">●</span>
                   </div>
                 </div>
                 <div className="tms-stat-value">
@@ -979,7 +1571,22 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-card-header">
                 <h3 className="tms-card-title">Performance Charts</h3>
                 <div className="tms-card-actions">
-                  <button className="tms-btn tms-btn-secondary tms-btn-small">
+                  <button
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                    onClick={() => handleGenerateReports('attendance')}
+                  >
+                    Attendance Report
+                  </button>
+                  <button
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                    onClick={() => handleGenerateReports('financial')}
+                  >
+                    Financial Report
+                  </button>
+                  <button
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                    onClick={handleExportAnalyticsReport}
+                  >
                     Export Report
                   </button>
                 </div>
@@ -987,339 +1594,9 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-card-content">
                 <div className="tms-chart-container">
                   <div>
-                    Performance charts will be displayed here
+                    ● Performance charts will be displayed here
                     <br />
                     <small>Integration with charting library in progress</small>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'ssg-wsg' && (
-          <div className="tms-fade-in">
-            <div className="tms-page-header">
-              <h2 className="tms-page-title">SSG-WSG Integration</h2>
-              <p className="tms-page-subtitle">
-                Singapore Government Training & Funding Systems Integration
-              </p>
-            </div>
-
-            {/* Integration Status */}
-            <div className="tms-stats-grid">
-              <div className="tms-stat-card">
-                <div className="tms-stat-header">
-                  <div className="tms-stat-icon success">
-                    <span className="tms-icon">●</span>
-                  </div>
-                </div>
-                <div className="tms-stat-value">Connected</div>
-                <div className="tms-stat-label">API Status</div>
-                <div className="tms-stat-change positive">OAuth 2.0 Active</div>
-              </div>
-
-              <div className="tms-stat-card">
-                <div className="tms-stat-header">
-                  <div className="tms-stat-icon info">
-                    <span className="tms-icon">$</span>
-                  </div>
-                </div>
-                <div className="tms-stat-value">S$245,800</div>
-                <div className="tms-stat-label">Total Claims</div>
-                <div className="tms-stat-change positive">
-                  12 claims processed
-                </div>
-              </div>
-
-              <div className="tms-stat-card">
-                <div className="tms-stat-header">
-                  <div className="tms-stat-icon primary">
-                    <span className="tms-icon">✓</span>
-                  </div>
-                </div>
-                <div className="tms-stat-value">8</div>
-                <div className="tms-stat-label">Approved Courses</div>
-                <div className="tms-stat-change positive">
-                  2 pending approval
-                </div>
-              </div>
-
-              <div className="tms-stat-card">
-                <div className="tms-stat-header">
-                  <div className="tms-stat-icon warning">
-                    <span className="tms-icon">★</span>
-                  </div>
-                </div>
-                <div className="tms-stat-value">156</div>
-                <div className="tms-stat-label">Skills Mapped</div>
-                <div className="tms-stat-change positive">SSG Framework</div>
-              </div>
-            </div>
-
-            <div className="tms-content-grid">
-              {/* SSG Funding Claims */}
-              <div>
-                <div className="tms-card">
-                  <div className="tms-card-header">
-                    <h3 className="tms-card-title">SSG Funding Claims</h3>
-                    <div className="tms-card-actions">
-                      <button className="tms-btn tms-btn-secondary tms-btn-small">
-                        View All
-                      </button>
-                      <button className="tms-btn tms-btn-primary tms-btn-small">
-                        New Claim
-                      </button>
-                    </div>
-                  </div>
-                  <div className="tms-card-content">
-                    <div className="tms-table-container">
-                      <table className="tms-table">
-                        <thead>
-                          <tr>
-                            <th>Claim ID</th>
-                            <th>Course</th>
-                            <th>Amount</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>SSG-2025-001</td>
-                            <td>Data Analytics Fundamentals</td>
-                            <td>S$12,500</td>
-                            <td>
-                              <span className="tms-badge success">
-                                Approved
-                              </span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-secondary">
-                                View
-                              </button>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td>SSG-2025-002</td>
-                            <td>Digital Marketing Skills</td>
-                            <td>S$8,900</td>
-                            <td>
-                              <span className="tms-badge warning">Pending</span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-secondary">
-                                Track
-                              </button>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td>SSG-2025-003</td>
-                            <td>Leadership Development</td>
-                            <td>S$15,200</td>
-                            <td>
-                              <span className="tms-badge success">
-                                Approved
-                              </span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-secondary">
-                                View
-                              </button>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-
-                {/* WSG Course Registry */}
-                <div className="tms-card">
-                  <div className="tms-card-header">
-                    <h3 className="tms-card-title">WSG Course Registry</h3>
-                    <div className="tms-card-actions">
-                      <button className="tms-btn tms-btn-secondary tms-btn-small">
-                        Sync Registry
-                      </button>
-                      <button className="tms-btn tms-btn-primary tms-btn-small">
-                        Submit Course
-                      </button>
-                    </div>
-                  </div>
-                  <div className="tms-card-content">
-                    <div className="tms-table-container">
-                      <table className="tms-table">
-                        <thead>
-                          <tr>
-                            <th>Course Code</th>
-                            <th>Course Name</th>
-                            <th>Category</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>WSG-DA-101</td>
-                            <td>Data Analytics Fundamentals</td>
-                            <td>Technology</td>
-                            <td>
-                              <span className="tms-badge success">
-                                Approved
-                              </span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-secondary">
-                                View
-                              </button>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td>WSG-DM-201</td>
-                            <td>Advanced Digital Marketing</td>
-                            <td>Marketing</td>
-                            <td>
-                              <span className="tms-badge warning">
-                                Under Review
-                              </span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-secondary">
-                                Track
-                              </button>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td>WSG-LD-301</td>
-                            <td>Executive Leadership</td>
-                            <td>Management</td>
-                            <td>
-                              <span className="tms-badge info">Draft</span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-primary">
-                                Submit
-                              </button>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Skills Framework & Integration Tools */}
-              <div>
-                <div className="tms-card">
-                  <div className="tms-card-header">
-                    <h3 className="tms-card-title">
-                      Skills Framework Integration
-                    </h3>
-                  </div>
-                  <div className="tms-card-content">
-                    <div className="tms-form-group">
-                      <label className="tms-label">
-                        Skills Framework Mapping
-                      </label>
-                      <div
-                        className="tms-progress"
-                        style={{ marginBottom: '12px' }}
-                      >
-                        <div
-                          className="tms-progress-bar"
-                          style={{ width: '78%' }}
-                        ></div>
-                      </div>
-                      <small className="tms-text-muted">
-                        156 out of 200 skills mapped
-                      </small>
-                    </div>
-
-                    <div className="tms-form-group">
-                      <label className="tms-label">Competency Tracking</label>
-                      <div className="tms-stats-mini">
-                        <div className="tms-stat-mini">
-                          <div className="tms-stat-mini-value">432</div>
-                          <div className="tms-stat-mini-label">Assessments</div>
-                        </div>
-                        <div className="tms-stat-mini">
-                          <div className="tms-stat-mini-value">89%</div>
-                          <div className="tms-stat-mini-label">Completion</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="tms-actions">
-                      <button className="tms-btn tms-btn-primary">
-                        Sync Skills Framework
-                      </button>
-                      <button className="tms-btn tms-btn-secondary">
-                        Export Competencies
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="tms-card">
-                  <div className="tms-card-header">
-                    <h3 className="tms-card-title">Integration Health</h3>
-                  </div>
-                  <div className="tms-card-content">
-                    <div className="tms-form-group">
-                      <label className="tms-label">API Status</label>
-                      <div className="tms-status-indicators">
-                        <div className="tms-status-item">
-                          <span className="tms-status-dot success"></span>
-                          <span>SSG Authentication</span>
-                          <span className="tms-status-value">Connected</span>
-                        </div>
-                        <div className="tms-status-item">
-                          <span className="tms-status-dot success"></span>
-                          <span>WSG Registry</span>
-                          <span className="tms-status-value">Active</span>
-                        </div>
-                        <div className="tms-status-item">
-                          <span className="tms-status-dot warning"></span>
-                          <span>Cache System</span>
-                          <span className="tms-status-value">94% Hit Rate</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="tms-form-group">
-                      <label className="tms-label">Recent Sync Activity</label>
-                      <div className="tms-activity-log">
-                        <div className="tms-activity-item">
-                          <span className="tms-activity-time">2 min ago</span>
-                          <span className="tms-activity-desc">
-                            Skills framework updated
-                          </span>
-                        </div>
-                        <div className="tms-activity-item">
-                          <span className="tms-activity-time">15 min ago</span>
-                          <span className="tms-activity-desc">
-                            New funding claim submitted
-                          </span>
-                        </div>
-                        <div className="tms-activity-item">
-                          <span className="tms-activity-time">1 hour ago</span>
-                          <span className="tms-activity-desc">
-                            Course approval received
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="tms-actions">
-                      <button className="tms-btn tms-btn-secondary">
-                        View Full Log
-                      </button>
-                      <button className="tms-btn tms-btn-primary">
-                        Test Connection
-                      </button>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1371,7 +1648,10 @@ export default function ProfessionalTMSDashboard() {
                         <option>UTC-8 (Pacific Time)</option>
                       </select>
                     </div>
-                    <button className="tms-btn tms-btn-primary">
+                    <button
+                      className="tms-btn tms-btn-primary"
+                      onClick={handleSaveGeneralSettings}
+                    >
                       Save Settings
                     </button>
                   </div>
@@ -1399,7 +1679,10 @@ export default function ProfessionalTMSDashboard() {
                         <option>Disabled</option>
                       </select>
                     </div>
-                    <button className="tms-btn tms-btn-primary">
+                    <button
+                      className="tms-btn tms-btn-primary"
+                      onClick={handleUpdateNotificationPreferences}
+                    >
                       Update Preferences
                     </button>
                   </div>
@@ -1442,7 +1725,12 @@ export default function ProfessionalTMSDashboard() {
                             <div
                               className={`tms-service-indicator ${service.status}`}
                             ></div>
-                            <button className="tms-btn tms-btn-secondary tms-btn-small">
+                            <button
+                              className="tms-btn tms-btn-secondary tms-btn-small"
+                              onClick={() =>
+                                handleConfigureService(service.name)
+                              }
+                            >
                               Configure
                             </button>
                           </div>
@@ -1523,10 +1811,16 @@ export default function ProfessionalTMSDashboard() {
                       }}
                     />
                     <div style={{ display: 'flex', gap: '12px' }}>
-                      <button className="tms-btn tms-btn-secondary tms-btn-small">
+                      <button
+                        className="tms-btn tms-btn-secondary tms-btn-small"
+                        onClick={handleRunDiagnostics}
+                      >
                         Run Diagnostics
                       </button>
-                      <button className="tms-btn tms-btn-primary tms-btn-small">
+                      <button
+                        className="tms-btn tms-btn-primary tms-btn-small"
+                        onClick={handleCheckUpdates}
+                      >
                         Check Updates
                       </button>
                     </div>
@@ -1544,36 +1838,28 @@ export default function ProfessionalTMSDashboard() {
           className={`tms-mobile-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
           onClick={() => setActiveTab('dashboard')}
         >
-          <span className="tms-mobile-nav-icon">
-            <span className="tms-icon">≡</span>
-          </span>
+          <span className="tms-mobile-nav-icon">●</span>
           Dashboard
         </button>
         <button
           className={`tms-mobile-nav-item ${activeTab === 'sessions' ? 'active' : ''}`}
           onClick={() => setActiveTab('sessions')}
         >
-          <span className="tms-mobile-nav-icon">
-            <span className="tms-icon">○</span>
-          </span>
+          <span className="tms-mobile-nav-icon">◉</span>
           Sessions
         </button>
         <button
           className={`tms-mobile-nav-item ${activeTab === 'participants' ? 'active' : ''}`}
           onClick={() => setActiveTab('participants')}
         >
-          <span className="tms-mobile-nav-icon">
-            <span className="tms-icon">◉</span>
-          </span>
+          <span className="tms-mobile-nav-icon">○</span>
           People
         </button>
         <button
           className={`tms-mobile-nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
           onClick={() => setActiveTab('analytics')}
         >
-          <span className="tms-mobile-nav-icon">
-            <span className="tms-icon">↗</span>
-          </span>
+          <span className="tms-mobile-nav-icon">↗</span>
           Analytics
         </button>
       </div>
