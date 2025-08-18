@@ -1299,6 +1299,470 @@ body {
   }
 }
 
+/* Professional Dedicated Pages Styles */
+
+/* Page Container */
+.tms-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--space-6);
+  min-height: 100vh;
+}
+
+/* Page Header */
+.tms-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.tms-header h1 {
+  font-size: 2rem;
+  font-weight: var(--font-weight-bold);
+  color: var(--gray-900);
+  margin: 0;
+}
+
+/* Controls Section */
+.tms-controls {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.tms-search {
+  flex: 1;
+  min-width: 200px;
+}
+
+.tms-filters {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.tms-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+
+/* Form Components */
+.tms-form-container {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+
+.tms-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-4);
+}
+
+.tms-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tms-form-group label {
+  font-weight: var(--font-weight-medium);
+  color: var(--gray-700);
+  font-size: 0.875rem;
+}
+
+.tms-form-group small {
+  color: var(--gray-500);
+  font-size: 0.8rem;
+}
+
+.tms-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--gray-200);
+  margin-top: var(--space-4);
+}
+
+/* Table Components */
+.tms-table-container {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.tms-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tms-table th,
+.tms-table td {
+  padding: var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.tms-table th {
+  background: var(--gray-50);
+  font-weight: var(--font-weight-semibold);
+  color: var(--gray-700);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.tms-table tr:hover {
+  background: var(--gray-50);
+}
+
+.tms-table tr:last-child td {
+  border-bottom: none;
+}
+
+.tms-no-data {
+  text-align: center;
+  padding: var(--space-12);
+  color: var(--gray-500);
+  font-style: italic;
+}
+
+/* Status Badges */
+.tms-status {
+  display: inline-block;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.tms-status.scheduled {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.tms-status.in-progress {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.tms-status.completed {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.tms-status.cancelled {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.tms-status.registered {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.tms-status.confirmed {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.tms-status.attended {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.tms-status.no-show {
+  background: #fecaca;
+  color: #991b1b;
+}
+
+/* Action Buttons */
+.tms-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.tms-button {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  color: var(--gray-700);
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tms-button:hover {
+  background: var(--gray-50);
+  border-color: var(--gray-400);
+}
+
+.tms-button.primary {
+  background: var(--primary);
+  color: var(--white);
+  border-color: var(--primary);
+}
+
+.tms-button.primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.tms-button.warning {
+  background: var(--warning);
+  color: var(--white);
+  border-color: var(--warning);
+}
+
+.tms-button.warning:hover {
+  background: #f59e0b;
+  border-color: #f59e0b;
+}
+
+.tms-button.small {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.8rem;
+}
+
+.tms-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Loading State */
+.tms-loading {
+  text-align: center;
+  padding: var(--space-12);
+  color: var(--gray-500);
+  font-size: 1rem;
+}
+
+/* Bulk Actions */
+.tms-bulk-actions {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-top: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: 0.875rem;
+}
+
+/* Analytics Specific Styles */
+.tms-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.tms-stat-card {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+
+.tms-stat-card h3 {
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--gray-600);
+  margin-bottom: var(--space-3);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.tms-stat-value {
+  font-size: 2rem;
+  font-weight: var(--font-weight-bold);
+  color: var(--gray-900);
+  margin-bottom: var(--space-2);
+}
+
+.tms-stat-change {
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+}
+
+.tms-stat-change.positive {
+  color: var(--success);
+}
+
+.tms-stat-change.negative {
+  color: var(--error);
+}
+
+.tms-stat-change.neutral {
+  color: var(--gray-500);
+}
+
+.health-healthy {
+  color: var(--success) !important;
+}
+
+.health-warning {
+  color: var(--warning) !important;
+}
+
+.health-critical {
+  color: var(--error) !important;
+}
+
+.tms-analytics-section {
+  margin-bottom: var(--space-8);
+}
+
+.tms-analytics-section h3 {
+  font-size: 1.25rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--gray-900);
+  margin-bottom: var(--space-4);
+}
+
+.tms-analytics-content {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+
+.tms-report-selector {
+  margin-right: var(--space-4);
+}
+
+/* Settings Specific Styles */
+.tms-settings-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.tms-tab {
+  padding: var(--space-3) var(--space-6);
+  border: none;
+  background: transparent;
+  color: var(--gray-600);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.tms-tab:hover {
+  color: var(--gray-900);
+}
+
+.tms-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.tms-settings-content {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+
+.tms-settings-section {
+  margin-bottom: var(--space-8);
+}
+
+.tms-settings-section:last-child {
+  margin-bottom: 0;
+}
+
+.tms-settings-section h3 {
+  font-size: 1.25rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--gray-900);
+  margin-bottom: var(--space-4);
+}
+
+.tms-maintenance-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-6);
+}
+
+.tms-tool-group {
+  padding: var(--space-4);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  background: var(--gray-50);
+}
+
+.tms-tool-group h4 {
+  font-size: 1rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--gray-900);
+  margin-bottom: var(--space-3);
+}
+
+.tms-tool-group .tms-button {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--space-2);
+}
+
+.tms-tool-group .tms-button:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .tms-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .tms-actions {
+    margin-left: 0;
+    justify-content: stretch;
+  }
+  
+  .tms-form {
+    grid-template-columns: 1fr;
+  }
+  
+  .tms-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .tms-settings-tabs {
+    flex-wrap: wrap;
+  }
+  
+  .tms-maintenance-tools {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 768px) {
   .tms-actions {
     flex-direction: column;

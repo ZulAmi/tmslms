@@ -1,7 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import './professional-tms.css';
+import {
+  SessionsAPI,
+  ParticipantsAPI,
+  SettingsAPI,
+  ReportsAPI,
+} from '../lib/api';
 
 // Type definitions
 interface DashboardStats {
@@ -52,7 +60,7 @@ interface Activity {
 
 interface ServiceStatus {
   name: string;
-  status: 'online' | 'offline' | 'degraded';
+  status: 'online' | 'offline' | 'maintenance';
   description: string;
   lastCheck: string;
 }
@@ -76,6 +84,7 @@ export default function ProfessionalTMSDashboard() {
   );
   const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus[]>([]);
+  const router = useRouter();
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -419,12 +428,6 @@ export default function ProfessionalTMSDashboard() {
               Analytics
             </button>
             <button
-              className={`tms-nav-tab ${activeTab === 'ssg-wsg' ? 'active' : ''}`}
-              onClick={() => setActiveTab('ssg-wsg')}
-            >
-              ◉ SSG-WSG Integration
-            </button>
-            <button
               className={`tms-nav-tab ${activeTab === 'settings' ? 'active' : ''}`}
               onClick={() => setActiveTab('settings')}
             >
@@ -454,7 +457,7 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-stat-card">
                 <div className="tms-stat-header">
                   <div className="tms-stat-icon primary">
-                    <span className="tms-icon">�</span>
+                    <span className="tms-icon">●</span>
                   </div>
                 </div>
                 <div className="tms-stat-value">{stats.totalSessions}</div>
@@ -467,7 +470,7 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-stat-card">
                 <div className="tms-stat-header">
                   <div className="tms-stat-icon success">
-                    <span className="tms-icon">�</span>
+                    <span className="tms-icon">◉</span>
                   </div>
                 </div>
                 <div className="tms-stat-value">{stats.totalParticipants}</div>
@@ -519,12 +522,18 @@ export default function ProfessionalTMSDashboard() {
                   <div className="tms-card-header">
                     <h3 className="tms-card-title">Recent Training Sessions</h3>
                     <div className="tms-card-actions">
-                      <button className="tms-btn tms-btn-secondary tms-btn-small">
-                        View All
-                      </button>
-                      <button className="tms-btn tms-btn-primary tms-btn-small">
+                      <Link
+                        href="/sessions"
+                        className="tms-btn tms-btn-secondary tms-btn-small"
+                      >
+                        View All Sessions
+                      </Link>
+                      <Link
+                        href="/sessions/create"
+                        className="tms-btn tms-btn-primary tms-btn-small"
+                      >
                         Schedule New
-                      </button>
+                      </Link>
                     </div>
                   </div>
                   <div className="tms-card-content">
@@ -536,6 +545,7 @@ export default function ProfessionalTMSDashboard() {
                             <th>Date & Time</th>
                             <th>Participants</th>
                             <th>Status</th>
+                            <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -577,6 +587,14 @@ export default function ProfessionalTMSDashboard() {
                                   {session.status}
                                 </span>
                               </td>
+                              <td>
+                                <Link
+                                  href={`/sessions/${session.id}`}
+                                  className="tms-btn tms-btn-primary tms-btn-small"
+                                >
+                                  View Details
+                                </Link>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -590,9 +608,18 @@ export default function ProfessionalTMSDashboard() {
                   <div className="tms-card-header">
                     <h3 className="tms-card-title">Recent Participants</h3>
                     <div className="tms-card-actions">
-                      <button className="tms-btn tms-btn-secondary tms-btn-small">
-                        Manage
-                      </button>
+                      <Link
+                        href="/participants"
+                        className="tms-btn tms-btn-secondary tms-btn-small"
+                      >
+                        Manage All
+                      </Link>
+                      <Link
+                        href="/participants/create"
+                        className="tms-btn tms-btn-primary tms-btn-small"
+                      >
+                        Add New
+                      </Link>
                     </div>
                   </div>
                   <div className="tms-card-content">
@@ -604,6 +631,7 @@ export default function ProfessionalTMSDashboard() {
                             <th>Department</th>
                             <th>Status</th>
                             <th>Sessions</th>
+                            <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -633,6 +661,14 @@ export default function ProfessionalTMSDashboard() {
                                 </span>
                               </td>
                               <td>{participant.completedSessions}</td>
+                              <td>
+                                <Link
+                                  href={`/participants/${participant.id}`}
+                                  className="tms-btn tms-btn-primary tms-btn-small"
+                                >
+                                  View Profile
+                                </Link>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -647,6 +683,14 @@ export default function ProfessionalTMSDashboard() {
                 <div className="tms-card">
                   <div className="tms-card-header">
                     <h3 className="tms-card-title">System Status</h3>
+                    <div className="tms-card-actions">
+                      <Link
+                        href="/settings/system-status"
+                        className="tms-btn tms-btn-secondary tms-btn-small"
+                      >
+                        System Diagnostics
+                      </Link>
+                    </div>
                   </div>
                   <div className="tms-card-content">
                     <div className="tms-service-status">
@@ -666,6 +710,14 @@ export default function ProfessionalTMSDashboard() {
                         </div>
                       ))}
                     </div>
+                    <div style={{ marginTop: '1rem' }}>
+                      <Link
+                        href="/settings/updates"
+                        className="tms-btn tms-btn-secondary tms-btn-small"
+                      >
+                        Check System Updates
+                      </Link>
+                    </div>
                   </div>
                 </div>
 
@@ -683,7 +735,7 @@ export default function ProfessionalTMSDashboard() {
                           >
                             <span className="tms-icon">
                               {activity.type === 'session' && '●'}
-                              {activity.type === 'registration' && '+'}
+                              {activity.type === 'registration' && '○'}
                               {activity.type === 'completion' && '✓'}
                               {activity.type === 'cancellation' && '×'}
                             </span>
@@ -705,6 +757,45 @@ export default function ProfessionalTMSDashboard() {
                     </div>
                   </div>
                 </div>
+
+                {/* Quick Actions */}
+                <div className="tms-card" style={{ marginTop: '2rem' }}>
+                  <div className="tms-card-header">
+                    <h3 className="tms-card-title">Quick Actions</h3>
+                  </div>
+                  <div className="tms-card-content">
+                    <div className="tms-quick-actions">
+                      <Link
+                        href="/analytics/export-report"
+                        className="tms-btn tms-btn-secondary"
+                        style={{ marginBottom: '0.5rem', width: '100%' }}
+                      >
+                        Export Analytics Report
+                      </Link>
+                      <Link
+                        href="/participants/export"
+                        className="tms-btn tms-btn-secondary"
+                        style={{ marginBottom: '0.5rem', width: '100%' }}
+                      >
+                        Export Participants
+                      </Link>
+                      <Link
+                        href="/sessions/bulk-manage"
+                        className="tms-btn tms-btn-secondary"
+                        style={{ marginBottom: '0.5rem', width: '100%' }}
+                      >
+                        Bulk Session Management
+                      </Link>
+                      <Link
+                        href="/settings/backup"
+                        className="tms-btn tms-btn-secondary"
+                        style={{ width: '100%' }}
+                      >
+                        System Backup
+                      </Link>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -723,10 +814,27 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-card-header">
                 <h3 className="tms-card-title">All Sessions</h3>
                 <div className="tms-card-actions">
-                  <button className="tms-btn tms-btn-secondary">Filter</button>
-                  <button className="tms-btn tms-btn-primary">
-                    Schedule New Session
-                  </button>
+                  <Link
+                    href="/sessions/filter"
+                    className="tms-btn tms-btn-secondary"
+                  >
+                    Advanced Filters
+                  </Link>
+                  <Link
+                    href="/sessions/bulk-manage"
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                  >
+                    Bulk Operations
+                  </Link>
+                  <Link href="/sessions" className="tms-btn tms-btn-primary">
+                    Manage All Sessions
+                  </Link>
+                  <Link
+                    href="/sessions/create"
+                    className="tms-btn tms-btn-primary"
+                  >
+                    Create New Session
+                  </Link>
                 </div>
               </div>
               <div className="tms-card-content">
@@ -797,12 +905,18 @@ export default function ProfessionalTMSDashboard() {
                           </td>
                           <td>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <button className="tms-btn tms-btn-secondary tms-btn-small">
+                              <Link
+                                href={`/sessions/${session.id}/edit`}
+                                className="tms-btn tms-btn-secondary tms-btn-small"
+                              >
                                 Edit
-                              </button>
-                              <button className="tms-btn tms-btn-primary tms-btn-small">
+                              </Link>
+                              <Link
+                                href={`/sessions/${session.id}`}
+                                className="tms-btn tms-btn-primary tms-btn-small"
+                              >
                                 View
-                              </button>
+                              </Link>
                             </div>
                           </td>
                         </tr>
@@ -828,10 +942,36 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-card-header">
                 <h3 className="tms-card-title">All Participants</h3>
                 <div className="tms-card-actions">
-                  <button className="tms-btn tms-btn-secondary">Export</button>
-                  <button className="tms-btn tms-btn-primary">
-                    Add Participant
-                  </button>
+                  <Link
+                    href="/participants/export"
+                    className="tms-btn tms-btn-secondary"
+                  >
+                    Export Data
+                  </Link>
+                  <Link
+                    href="/participants/bulk-email"
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                  >
+                    Bulk Email
+                  </Link>
+                  <Link
+                    href="/participants/certificates"
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                  >
+                    Export Certificates
+                  </Link>
+                  <Link
+                    href="/participants"
+                    className="tms-btn tms-btn-primary"
+                  >
+                    Manage All Participants
+                  </Link>
+                  <Link
+                    href="/participants/create"
+                    className="tms-btn tms-btn-primary"
+                  >
+                    Add New Participant
+                  </Link>
                 </div>
               </div>
               <div className="tms-card-content">
@@ -855,14 +995,6 @@ export default function ProfessionalTMSDashboard() {
                             <div>
                               <div style={{ fontWeight: 600 }}>
                                 {participant.name}
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: '0.75rem',
-                                  color: 'var(--gray-500)',
-                                }}
-                              >
-                                Registered {participant.registrationDate}
                               </div>
                             </div>
                           </td>
@@ -889,12 +1021,18 @@ export default function ProfessionalTMSDashboard() {
                           <td>{participant.lastActivity}</td>
                           <td>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <button className="tms-btn tms-btn-secondary tms-btn-small">
+                              <Link
+                                href={`/participants/${participant.id}/edit`}
+                                className="tms-btn tms-btn-secondary tms-btn-small"
+                              >
                                 Edit
-                              </button>
-                              <button className="tms-btn tms-btn-primary tms-btn-small">
-                                Profile
-                              </button>
+                              </Link>
+                              <Link
+                                href={`/participants/${participant.id}`}
+                                className="tms-btn tms-btn-primary tms-btn-small"
+                              >
+                                View Profile
+                              </Link>
                             </div>
                           </td>
                         </tr>
@@ -962,7 +1100,7 @@ export default function ProfessionalTMSDashboard() {
               <div className="tms-stat-card">
                 <div className="tms-stat-header">
                   <div className="tms-stat-icon primary">
-                    <span className="tms-icon">≡</span>
+                    <span className="tms-icon">●</span>
                   </div>
                 </div>
                 <div className="tms-stat-value">
@@ -977,348 +1115,56 @@ export default function ProfessionalTMSDashboard() {
 
             <div className="tms-card">
               <div className="tms-card-header">
-                <h3 className="tms-card-title">Performance Charts</h3>
+                <h3 className="tms-card-title">Performance Reports</h3>
                 <div className="tms-card-actions">
-                  <button className="tms-btn tms-btn-secondary tms-btn-small">
-                    Export Report
-                  </button>
+                  <Link
+                    href="/analytics/attendance-report"
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                  >
+                    Attendance Report
+                  </Link>
+                  <Link
+                    href="/analytics/financial-report"
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                  >
+                    Financial Report
+                  </Link>
+                  <Link
+                    href="/analytics/performance-report"
+                    className="tms-btn tms-btn-secondary tms-btn-small"
+                  >
+                    Performance Report
+                  </Link>
+                  <Link href="/analytics" className="tms-btn tms-btn-primary">
+                    Full Analytics Dashboard
+                  </Link>
+                  <Link
+                    href="/analytics/export-report"
+                    className="tms-btn tms-btn-primary tms-btn-small"
+                  >
+                    Export All Data
+                  </Link>
                 </div>
               </div>
               <div className="tms-card-content">
                 <div className="tms-chart-container">
-                  <div>
-                    Performance charts will be displayed here
-                    <br />
-                    <small>Integration with charting library in progress</small>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'ssg-wsg' && (
-          <div className="tms-fade-in">
-            <div className="tms-page-header">
-              <h2 className="tms-page-title">SSG-WSG Integration</h2>
-              <p className="tms-page-subtitle">
-                Singapore Government Training & Funding Systems Integration
-              </p>
-            </div>
-
-            {/* Integration Status */}
-            <div className="tms-stats-grid">
-              <div className="tms-stat-card">
-                <div className="tms-stat-header">
-                  <div className="tms-stat-icon success">
-                    <span className="tms-icon">●</span>
-                  </div>
-                </div>
-                <div className="tms-stat-value">Connected</div>
-                <div className="tms-stat-label">API Status</div>
-                <div className="tms-stat-change positive">OAuth 2.0 Active</div>
-              </div>
-
-              <div className="tms-stat-card">
-                <div className="tms-stat-header">
-                  <div className="tms-stat-icon info">
-                    <span className="tms-icon">$</span>
-                  </div>
-                </div>
-                <div className="tms-stat-value">S$245,800</div>
-                <div className="tms-stat-label">Total Claims</div>
-                <div className="tms-stat-change positive">
-                  12 claims processed
-                </div>
-              </div>
-
-              <div className="tms-stat-card">
-                <div className="tms-stat-header">
-                  <div className="tms-stat-icon primary">
-                    <span className="tms-icon">✓</span>
-                  </div>
-                </div>
-                <div className="tms-stat-value">8</div>
-                <div className="tms-stat-label">Approved Courses</div>
-                <div className="tms-stat-change positive">
-                  2 pending approval
-                </div>
-              </div>
-
-              <div className="tms-stat-card">
-                <div className="tms-stat-header">
-                  <div className="tms-stat-icon warning">
-                    <span className="tms-icon">★</span>
-                  </div>
-                </div>
-                <div className="tms-stat-value">156</div>
-                <div className="tms-stat-label">Skills Mapped</div>
-                <div className="tms-stat-change positive">SSG Framework</div>
-              </div>
-            </div>
-
-            <div className="tms-content-grid">
-              {/* SSG Funding Claims */}
-              <div>
-                <div className="tms-card">
-                  <div className="tms-card-header">
-                    <h3 className="tms-card-title">SSG Funding Claims</h3>
-                    <div className="tms-card-actions">
-                      <button className="tms-btn tms-btn-secondary tms-btn-small">
-                        View All
-                      </button>
-                      <button className="tms-btn tms-btn-primary tms-btn-small">
-                        New Claim
-                      </button>
-                    </div>
-                  </div>
-                  <div className="tms-card-content">
-                    <div className="tms-table-container">
-                      <table className="tms-table">
-                        <thead>
-                          <tr>
-                            <th>Claim ID</th>
-                            <th>Course</th>
-                            <th>Amount</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>SSG-2025-001</td>
-                            <td>Data Analytics Fundamentals</td>
-                            <td>S$12,500</td>
-                            <td>
-                              <span className="tms-badge success">
-                                Approved
-                              </span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-secondary">
-                                View
-                              </button>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td>SSG-2025-002</td>
-                            <td>Digital Marketing Skills</td>
-                            <td>S$8,900</td>
-                            <td>
-                              <span className="tms-badge warning">Pending</span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-secondary">
-                                Track
-                              </button>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td>SSG-2025-003</td>
-                            <td>Leadership Development</td>
-                            <td>S$15,200</td>
-                            <td>
-                              <span className="tms-badge success">
-                                Approved
-                              </span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-secondary">
-                                View
-                              </button>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-
-                {/* WSG Course Registry */}
-                <div className="tms-card">
-                  <div className="tms-card-header">
-                    <h3 className="tms-card-title">WSG Course Registry</h3>
-                    <div className="tms-card-actions">
-                      <button className="tms-btn tms-btn-secondary tms-btn-small">
-                        Sync Registry
-                      </button>
-                      <button className="tms-btn tms-btn-primary tms-btn-small">
-                        Submit Course
-                      </button>
-                    </div>
-                  </div>
-                  <div className="tms-card-content">
-                    <div className="tms-table-container">
-                      <table className="tms-table">
-                        <thead>
-                          <tr>
-                            <th>Course Code</th>
-                            <th>Course Name</th>
-                            <th>Category</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>WSG-DA-101</td>
-                            <td>Data Analytics Fundamentals</td>
-                            <td>Technology</td>
-                            <td>
-                              <span className="tms-badge success">
-                                Approved
-                              </span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-secondary">
-                                View
-                              </button>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td>WSG-DM-201</td>
-                            <td>Advanced Digital Marketing</td>
-                            <td>Marketing</td>
-                            <td>
-                              <span className="tms-badge warning">
-                                Under Review
-                              </span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-secondary">
-                                Track
-                              </button>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td>WSG-LD-301</td>
-                            <td>Executive Leadership</td>
-                            <td>Management</td>
-                            <td>
-                              <span className="tms-badge info">Draft</span>
-                            </td>
-                            <td>
-                              <button className="tms-btn tms-btn-small tms-btn-primary">
-                                Submit
-                              </button>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Skills Framework & Integration Tools */}
-              <div>
-                <div className="tms-card">
-                  <div className="tms-card-header">
-                    <h3 className="tms-card-title">
-                      Skills Framework Integration
-                    </h3>
-                  </div>
-                  <div className="tms-card-content">
-                    <div className="tms-form-group">
-                      <label className="tms-label">
-                        Skills Framework Mapping
-                      </label>
-                      <div
-                        className="tms-progress"
-                        style={{ marginBottom: '12px' }}
+                  <div className="tms-chart-placeholder">
+                    <h4>Performance Analytics</h4>
+                    <p>
+                      ● Advanced charts and metrics available in full analytics
+                      dashboard
+                    </p>
+                    <p>
+                      ● Integration with charting library provides detailed
+                      visualizations
+                    </p>
+                    <div style={{ marginTop: '1rem' }}>
+                      <Link
+                        href="/analytics"
+                        className="tms-btn tms-btn-primary"
                       >
-                        <div
-                          className="tms-progress-bar"
-                          style={{ width: '78%' }}
-                        ></div>
-                      </div>
-                      <small className="tms-text-muted">
-                        156 out of 200 skills mapped
-                      </small>
-                    </div>
-
-                    <div className="tms-form-group">
-                      <label className="tms-label">Competency Tracking</label>
-                      <div className="tms-stats-mini">
-                        <div className="tms-stat-mini">
-                          <div className="tms-stat-mini-value">432</div>
-                          <div className="tms-stat-mini-label">Assessments</div>
-                        </div>
-                        <div className="tms-stat-mini">
-                          <div className="tms-stat-mini-value">89%</div>
-                          <div className="tms-stat-mini-label">Completion</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="tms-actions">
-                      <button className="tms-btn tms-btn-primary">
-                        Sync Skills Framework
-                      </button>
-                      <button className="tms-btn tms-btn-secondary">
-                        Export Competencies
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="tms-card">
-                  <div className="tms-card-header">
-                    <h3 className="tms-card-title">Integration Health</h3>
-                  </div>
-                  <div className="tms-card-content">
-                    <div className="tms-form-group">
-                      <label className="tms-label">API Status</label>
-                      <div className="tms-status-indicators">
-                        <div className="tms-status-item">
-                          <span className="tms-status-dot success"></span>
-                          <span>SSG Authentication</span>
-                          <span className="tms-status-value">Connected</span>
-                        </div>
-                        <div className="tms-status-item">
-                          <span className="tms-status-dot success"></span>
-                          <span>WSG Registry</span>
-                          <span className="tms-status-value">Active</span>
-                        </div>
-                        <div className="tms-status-item">
-                          <span className="tms-status-dot warning"></span>
-                          <span>Cache System</span>
-                          <span className="tms-status-value">94% Hit Rate</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="tms-form-group">
-                      <label className="tms-label">Recent Sync Activity</label>
-                      <div className="tms-activity-log">
-                        <div className="tms-activity-item">
-                          <span className="tms-activity-time">2 min ago</span>
-                          <span className="tms-activity-desc">
-                            Skills framework updated
-                          </span>
-                        </div>
-                        <div className="tms-activity-item">
-                          <span className="tms-activity-time">15 min ago</span>
-                          <span className="tms-activity-desc">
-                            New funding claim submitted
-                          </span>
-                        </div>
-                        <div className="tms-activity-item">
-                          <span className="tms-activity-time">1 hour ago</span>
-                          <span className="tms-activity-desc">
-                            Course approval received
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="tms-actions">
-                      <button className="tms-btn tms-btn-secondary">
-                        View Full Log
-                      </button>
-                      <button className="tms-btn tms-btn-primary">
-                        Test Connection
-                      </button>
+                        View Full Analytics
+                      </Link>
                     </div>
                   </div>
                 </div>
@@ -1349,31 +1195,42 @@ export default function ProfessionalTMSDashboard() {
                         type="text"
                         className="tms-input"
                         defaultValue="Training Management Corp"
+                        readOnly
                       />
                     </div>
                     <div className="tms-form-group">
                       <label className="tms-label">
                         Default Session Duration
                       </label>
-                      <select className="tms-select">
+                      <select className="tms-select" disabled>
                         <option>2 hours</option>
                         <option>4 hours</option>
-                        <option>6 hours</option>
                         <option>8 hours</option>
                       </select>
                     </div>
                     <div className="tms-form-group">
                       <label className="tms-label">Time Zone</label>
-                      <select className="tms-select">
-                        <option>UTC-5 (Eastern Time)</option>
-                        <option>UTC-6 (Central Time)</option>
-                        <option>UTC-7 (Mountain Time)</option>
-                        <option>UTC-8 (Pacific Time)</option>
+                      <select className="tms-select" disabled>
+                        <option>UTC-05:00 (Eastern)</option>
+                        <option>UTC-06:00 (Central)</option>
+                        <option>UTC-07:00 (Mountain)</option>
+                        <option>UTC-08:00 (Pacific)</option>
                       </select>
                     </div>
-                    <button className="tms-btn tms-btn-primary">
-                      Save Settings
-                    </button>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <Link
+                        href="/settings"
+                        className="tms-btn tms-btn-primary"
+                      >
+                        Advanced Settings
+                      </Link>
+                      <Link
+                        href="/settings/general"
+                        className="tms-btn tms-btn-secondary"
+                      >
+                        Edit Settings
+                      </Link>
+                    </div>
                   </div>
                 </div>
 
@@ -1384,24 +1241,29 @@ export default function ProfessionalTMSDashboard() {
                   <div className="tms-card-content">
                     <div className="tms-form-group">
                       <label className="tms-label">Email Notifications</label>
-                      <select className="tms-select">
+                      <select className="tms-select" disabled>
                         <option>All notifications</option>
                         <option>Important only</option>
-                        <option>None</option>
-                      </select>
-                    </div>
-                    <div className="tms-form-group">
-                      <label className="tms-label">Reminder Settings</label>
-                      <select className="tms-select">
-                        <option>24 hours before</option>
-                        <option>2 hours before</option>
-                        <option>1 hour before</option>
                         <option>Disabled</option>
                       </select>
                     </div>
-                    <button className="tms-btn tms-btn-primary">
-                      Update Preferences
-                    </button>
+                    <div className="tms-form-group">
+                      <label className="tms-label">Session Reminders</label>
+                      <select className="tms-select" disabled>
+                        <option>24 hours before</option>
+                        <option>1 hour before</option>
+                        <option>Both</option>
+                        <option>Disabled</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <Link
+                        href="/settings/notifications"
+                        className="tms-btn tms-btn-primary"
+                      >
+                        Manage Notifications
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1409,43 +1271,74 @@ export default function ProfessionalTMSDashboard() {
               <div>
                 <div className="tms-card">
                   <div className="tms-card-header">
-                    <h3 className="tms-card-title">Service Integrations</h3>
+                    <h3 className="tms-card-title">System Information</h3>
                   </div>
                   <div className="tms-card-content">
-                    <div className="tms-service-status">
+                    <div className="tms-info-grid">
+                      <div className="tms-info-item">
+                        <div className="tms-info-label">TMS Version</div>
+                        <div className="tms-info-value">2.1.0</div>
+                      </div>
+                      <div className="tms-info-item">
+                        <div className="tms-info-label">Last Update</div>
+                        <div className="tms-info-value">Dec 15, 2024</div>
+                      </div>
+                      <div className="tms-info-item">
+                        <div className="tms-info-label">System Status</div>
+                        <div className="tms-info-value">
+                          <span className="tms-badge tms-badge-success">
+                            Healthy
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: '1.5rem',
+                        display: 'flex',
+                        gap: '12px',
+                      }}
+                    >
+                      <Link
+                        href="/settings/system-status"
+                        className="tms-btn tms-btn-secondary"
+                      >
+                        System Diagnostics
+                      </Link>
+                      <Link
+                        href="/settings/updates"
+                        className="tms-btn tms-btn-secondary"
+                      >
+                        Check Updates
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="tms-card" style={{ marginTop: '2rem' }}>
+                  <div className="tms-card-header">
+                    <h3 className="tms-card-title">Service Configuration</h3>
+                  </div>
+                  <div className="tms-card-content">
+                    <div className="tms-service-config">
                       {serviceStatus.map((service, index) => (
-                        <div key={index} className="tms-service-item">
+                        <div key={index} className="tms-service-config-item">
                           <div className="tms-service-info">
                             <div className="tms-service-name">
                               {service.name}
                             </div>
-                            <div className="tms-service-description">
-                              {service.description}
-                            </div>
-                            <div
-                              style={{
-                                fontSize: '0.75rem',
-                                color: 'var(--gray-500)',
-                                marginTop: '4px',
-                              }}
+                            <span
+                              className={`tms-badge tms-badge-${getStatusColor(service.status)}`}
                             >
-                              Last checked: {service.lastCheck}
-                            </div>
+                              {service.status}
+                            </span>
                           </div>
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '12px',
-                            }}
+                          <Link
+                            href={`/settings/services/${service.name.toLowerCase().replace(/\s+/g, '-')}`}
+                            className="tms-btn tms-btn-secondary tms-btn-small"
                           >
-                            <div
-                              className={`tms-service-indicator ${service.status}`}
-                            ></div>
-                            <button className="tms-btn tms-btn-secondary tms-btn-small">
-                              Configure
-                            </button>
-                          </div>
+                            Configure
+                          </Link>
                         </div>
                       ))}
                     </div>
@@ -1454,7 +1347,7 @@ export default function ProfessionalTMSDashboard() {
 
                 <div className="tms-card" style={{ marginTop: '2rem' }}>
                   <div className="tms-card-header">
-                    <h3 className="tms-card-title">System Information</h3>
+                    <h3 className="tms-card-title">System Maintenance</h3>
                   </div>
                   <div className="tms-card-content">
                     <div
@@ -1464,71 +1357,24 @@ export default function ProfessionalTMSDashboard() {
                         gap: '12px',
                       }}
                     >
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                        }}
+                      <Link
+                        href="/settings/backup"
+                        className="tms-btn tms-btn-secondary"
                       >
-                        <span style={{ color: 'var(--gray-600)' }}>
-                          TMS Version:
-                        </span>
-                        <span style={{ fontWeight: 600 }}>v2.1.0</span>
-                      </div>
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                        }}
+                        System Backup
+                      </Link>
+                      <Link
+                        href="/settings/maintenance"
+                        className="tms-btn tms-btn-secondary"
                       >
-                        <span style={{ color: 'var(--gray-600)' }}>
-                          Last Updated:
-                        </span>
-                        <span style={{ fontWeight: 600 }}>2024-01-15</span>
-                      </div>
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                        }}
+                        Maintenance Mode
+                      </Link>
+                      <Link
+                        href="/settings/export"
+                        className="tms-btn tms-btn-secondary"
                       >
-                        <span style={{ color: 'var(--gray-600)' }}>
-                          Database Status:
-                        </span>
-                        <span className="tms-badge tms-badge-success">
-                          Connected
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                        }}
-                      >
-                        <span style={{ color: 'var(--gray-600)' }}>
-                          System Health:
-                        </span>
-                        <span
-                          className={`tms-badge tms-badge-${getStatusColor(stats.systemHealth)}`}
-                        >
-                          {stats.systemHealth}
-                        </span>
-                      </div>
-                    </div>
-                    <hr
-                      style={{
-                        margin: '16px 0',
-                        border: 'none',
-                        borderTop: '1px solid var(--gray-200)',
-                      }}
-                    />
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                      <button className="tms-btn tms-btn-secondary tms-btn-small">
-                        Run Diagnostics
-                      </button>
-                      <button className="tms-btn tms-btn-primary tms-btn-small">
-                        Check Updates
-                      </button>
+                        Export System Data
+                      </Link>
                     </div>
                   </div>
                 </div>
@@ -1544,36 +1390,28 @@ export default function ProfessionalTMSDashboard() {
           className={`tms-mobile-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
           onClick={() => setActiveTab('dashboard')}
         >
-          <span className="tms-mobile-nav-icon">
-            <span className="tms-icon">≡</span>
-          </span>
+          <span className="tms-mobile-nav-icon">●</span>
           Dashboard
         </button>
         <button
           className={`tms-mobile-nav-item ${activeTab === 'sessions' ? 'active' : ''}`}
           onClick={() => setActiveTab('sessions')}
         >
-          <span className="tms-mobile-nav-icon">
-            <span className="tms-icon">○</span>
-          </span>
+          <span className="tms-mobile-nav-icon">◉</span>
           Sessions
         </button>
         <button
           className={`tms-mobile-nav-item ${activeTab === 'participants' ? 'active' : ''}`}
           onClick={() => setActiveTab('participants')}
         >
-          <span className="tms-mobile-nav-icon">
-            <span className="tms-icon">◉</span>
-          </span>
+          <span className="tms-mobile-nav-icon">○</span>
           People
         </button>
         <button
           className={`tms-mobile-nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
           onClick={() => setActiveTab('analytics')}
         >
-          <span className="tms-mobile-nav-icon">
-            <span className="tms-icon">↗</span>
-          </span>
+          <span className="tms-mobile-nav-icon">↗</span>
           Analytics
         </button>
       </div>

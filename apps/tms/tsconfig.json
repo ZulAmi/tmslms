@@ -1,4 +1,3 @@
-// filepath: j:\Programming\TMSLMS\apps\tms\tsconfig.json
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
