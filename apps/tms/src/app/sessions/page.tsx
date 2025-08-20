@@ -583,6 +583,27 @@ export default function SessionsPage() {
               </div>
             </div>
           </div>
+
+          {/* Empty State */}
+          {filteredSessions.length === 0 && (
+            <div
+              className="tms-card"
+              style={{ textAlign: 'center', padding: '3rem' }}
+            >
+              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📅</div>
+              <h3 style={{ marginBottom: '1rem' }}>No sessions found</h3>
+              <p style={{ marginBottom: '2rem', color: 'var(--gray-600)' }}>
+                {searchTerm ||
+                filterStatus !== 'all' ||
+                filterCategory !== 'all'
+                  ? 'Try adjusting your filters or search terms.'
+                  : 'Get started by creating your first training session.'}
+              </p>
+              <Link href="/sessions/create" className="tms-btn tms-btn-primary">
+                Create New Session
+              </Link>
+            </div>
+          )}
         </div>
       </main>
     </div>
